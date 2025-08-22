@@ -2,33 +2,16 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 
-/* -----------------------------------------------------------
-   사용자 옵션 (필요 시 여기만 수정)
------------------------------------------------------------ */
-// 구분(단일 선택)
+/* 사용자 옵션 */
 const DIVISION_OPTIONS = ["국내서", "국외서", "원서", "번역서"];
-
-// 카테고리(멀티 선택 + 자유추가) — 인문학 중심 기본 예시
 const CATEGORY_SUGGESTIONS = [
   "철학", "역사", "문학(국내)", "문학(해외)", "사회", "정치",
   "경제", "심리", "종교", "예술", "교육", "언어", "문화", "과학사",
 ];
-
-// 단계(단일 선택)
 const LEVEL_OPTIONS = ["입문", "초급", "중급", "고급", "전문"];
 
-/* -----------------------------------------------------------
-   공통 입력 UI — placeholder 가독성↑ + 포커스 시 숨김
------------------------------------------------------------ */
-function InputField({
-  label,
-  name,
-  value,
-  onChange,
-  required = false,
-  placeholder = "",
-  type = "text",
-}) {
+/* 공통 입력 UI */
+function InputField({ label, name, value, onChange, required = false, placeholder = "", type = "text" }) {
   const [showPh, setShowPh] = useState(true);
   return (
     <div className="space-y-1">
@@ -52,15 +35,7 @@ function InputField({
   );
 }
 
-function TextArea({
-  label,
-  name,
-  value,
-  onChange,
-  required = false,
-  placeholder = "",
-  rows = 4,
-}) {
+function TextArea({ label, name, value, onChange, required = false, placeholder = "", rows = 4 }) {
   const [showPh, setShowPh] = useState(true);
   return (
     <div className="space-y-1">
@@ -84,7 +59,6 @@ function TextArea({
   );
 }
 
-// 단일 선택 칩(구분/단계 등)
 function ChipSelect({ label, value, onChange, options, required = false }) {
   return (
     <div className="space-y-2">
@@ -114,7 +88,6 @@ function ChipSelect({ label, value, onChange, options, required = false }) {
   );
 }
 
-// 멀티 태그 입력(카테고리) — 제안 + 자유 추가
 function TagsInput({
   label,
   tags,
@@ -152,7 +125,6 @@ function TagsInput({
         {label} {required && <span className="text-red-500">*</span>}
       </div>
 
-      {/* 선택된 태그 */}
       <div className="flex flex-wrap gap-2">
         {tags.map((t) => (
           <span
@@ -172,7 +144,6 @@ function TagsInput({
         ))}
       </div>
 
-      {/* 입력창 */}
       <input
         value={input}
         onChange={(e) => setInput(e.target.value)}
@@ -185,7 +156,6 @@ function TagsInput({
                    focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
       />
 
-      {/* 제안 목록 — 마크다운 느낌의 리스트 */}
       {filtered.length > 0 && (
         <div className="rounded-lg border border-gray-200 bg-white p-3">
           <div className="mb-2 text-xs text-gray-500">제안 목록</div>
@@ -212,16 +182,12 @@ function TagsInput({
   );
 }
 
-/* -----------------------------------------------------------
-   본문 페이지
------------------------------------------------------------ */
+/* 본문 페이지 */
 export default function BookForm() {
   const router = useRouter();
 
-  // ❌ ID 입력은 받지 않습니다(자동 생성).
-  // 폼 상태
-  const [registrant, setRegistrant] = useState(""); // 작성자 이름 (header: registrant)
-  const [email, setEmail] = useState("");           // 작성자 이메일 (header: email 또는 e-mail)
+  const [registrant, setRegistrant] = useState("");
+  const [email, setEmail] = useState("");
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
   const [translator, setTranslator] = useState("");
@@ -230,23 +196,19 @@ export default function BookForm() {
   const [theme, setTheme] = useState("");
   const [level, setLevel] = useState("");
   const [division, setDivision] = useState("");
-  const [categories, setCategories] = useState([]); // 멀티
+  const [categories, setCategories] = useState([]);
   const [buyLink, setBuyLink] = useState("");
   const [image, setImage] = useState("");
   const [description, setDescription] = useState("");
   const [reason, setReason] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
-
-  // 제출 성공 안내 & 카운트다운
   const [success, setSuccess] = useState(false);
   const [countdown, setCountdown] = useState(3);
 
-  // 필수값 검증
   const requiredOk =
     registrant && email && title && author && publisher && categories.length > 0;
 
-  // 성공 시 3초 카운트다운 후 /home 이동
   useEffect(() => {
     if (!success) return;
     const timer = setInterval(() => {
@@ -270,7 +232,6 @@ export default function BookForm() {
     }
     setSubmitting(true);
 
-    // 자동 생성 필드
     const now = new Date();
     const pad = (n) => String(n).padStart(2, "0");
     const created_at = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
@@ -278,14 +239,12 @@ export default function BookForm() {
     )} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
     const id = String(Date.now());
 
-    // ⚠️ 시트 헤더에 맞춰 key 구성
-    //  - 'email' vs 'e-mail' 헤더 혼용 가능성을 대비해 둘 다 전달
     const payload = {
       id,
       created_at,
-      registrant,          // 작성자 이름
-      email,               // 헤더가 email 인 경우
-      "e-mail": email,     // 헤더가 e-mail 인 경우
+      registrant,
+      email,
+      "e-mail": email,
       title,
       author,
       translator,
@@ -311,8 +270,6 @@ export default function BookForm() {
       if (!res.ok || data?.success === false) {
         throw new Error(data?.error || `등록 실패 (${res.status})`);
       }
-
-      // 성공 안내 → 3초 후 /home 이동
       setSuccess(true);
     } catch (err) {
       console.error(err);
@@ -322,182 +279,248 @@ export default function BookForm() {
     }
   };
 
+  /* 좌측: 국립중앙도서관 API 검색 */
+  const [q, setQ] = useState("");
+  const [provider, setProvider] = useState("kolis"); // kolis | seoji
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+
+  const search = async (page = 1) => {
+    if (!q.trim()) {
+      setResults([]);
+      return;
+    }
+    setSearching(true);
+    try {
+      const r = await fetch(
+        `/api/korlib?q=${encodeURIComponent(q)}&provider=${provider}&page=${page}&size=20`
+      );
+      const data = await r.json();
+      setResults(Array.isArray(data.items) ? data.items : []);
+    } catch {
+      setResults([]);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const pick = (item) => {
+    if (item?.title) setTitle(item.title);
+    if (item?.author) setAuthor(item.author);
+    if (item?.publisher) setPublisher(item.publisher);
+    if (item?.ISBN) setIsbn(item.ISBN);
+    if (item?.image) setImage(item.image);
+    if (item?.description) setDescription(item.description);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8">
-        <h1 className="mb-6 text-2xl font-extrabold text-blue-600">📝 도서 등록</h1>
+      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+        <div className="mb-8 flex items-center gap-3">
+          <span className="text-2xl">📝</span>
+          <h1 className="text-2xl font-extrabold text-blue-600">도서 등록</h1>
+        </div>
 
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-2xl border border-gray-200 bg-white p-6 shadow"
-        >
-          {/* ID 입력 필드 제거(자동 생성) */}
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-7">
+          {/* 좌측 검색 패널 */}
+          <aside className="md:col-span-2">
+            <div className="sticky top-24 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="mb-2 flex items-center justify-between">
+                <h2 className="font-semibold">도서 검색</h2>
+                <select
+                  value={provider}
+                  onChange={(e) => setProvider(e.target.value)}
+                  className="rounded-md border-gray-300 text-sm"
+                >
+                  <option value="kolis">KOLIS-NET</option>
+                  <option value="seoji">서지(ISBN)</option>
+                </select>
+              </div>
 
-          <div className="grid gap-5">
-            {/* 작성자 정보 */}
-            <InputField
-              label="작성자 이름 (registrant)"
-              name="registrant"
-              value={registrant}
-              onChange={setRegistrant}
-              required
-              placeholder="예: 홍길동"
-            />
-            <InputField
-              label="이메일 (email/e-mail)"
-              name="email"
-              value={email}
-              onChange={setEmail}
-              required
-              placeholder="예: you@example.com"
-              type="email"
-            />
+              <div className="flex gap-2">
+                <input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && search()}
+                  placeholder="제목/저자/ISBN 검색"
+                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  onClick={() => search()}
+                  disabled={searching}
+                  className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  {searching ? "검색중…" : "검색"}
+                </button>
+              </div>
 
-            {/* 도서 기본 */}
-            <InputField
-              label="제목"
-              name="title"
-              value={title}
-              onChange={setTitle}
-              required
-              placeholder="도서 제목"
-            />
-            <InputField
-              label="저자"
-              name="author"
-              value={author}
-              onChange={setAuthor}
-              required
-              placeholder="저자 전체 이름 (공백 포함 그대로)"
-            />
-            <InputField
-              label="역자"
-              name="translator"
-              value={translator}
-              onChange={setTranslator}
-              placeholder="역자(있다면 전체 이름)"
-            />
-            <InputField
-              label="출판사"
-              name="publisher"
-              value={publisher}
-              onChange={setPublisher}
-              required
-              placeholder="출판사명"
-            />
-            <InputField
-              label="ISBN"
-              name="isbn"
-              value={isbn}
-              onChange={setIsbn}
-              placeholder="예: 9781234567890"
-            />
-            <InputField
-              label="테마"
-              name="theme"
-              value={theme}
-              onChange={setTheme}
-              placeholder="예: 철학, 역사, 과학"
-            />
+              <div className="mt-4 h-[520px] overflow-auto">
+                {results.length === 0 && !searching && (
+                  <p className="text-sm text-gray-400">검색 결과가 여기 표시됩니다.</p>
+                )}
+                <ul className="space-y-3">
+                  {results.map((b, i) => (
+                    <li
+                      key={`${b.ISBN || b.title}-${i}`}
+                      className="rounded-lg border border-gray-200 p-3 hover:border-blue-400"
+                    >
+                      <div className="flex gap-3">
+                        <div className="h-16 w-12 flex-shrink-0 overflow-hidden rounded bg-gray-100">
+                          {b.image ? (
+                            <img alt={b.title} src={b.image} className="h-full w-full object-cover" />
+                          ) : null}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold">{b.title}</p>
+                          <p className="truncate text-xs text-gray-500">{b.author}</p>
+                          <p className="truncate text-xs text-gray-400">
+                            {b.publisher} {b.pub_year ? `· ${b.pub_year}` : ""} {b.ISBN ? `· ${b.ISBN}` : ""}
+                          </p>
+                          <div className="mt-2">
+                            <button
+                              onClick={() => pick(b)}
+                              className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
+                            >
+                              이 항목 적용
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
 
-            {/* 구분/단계 */}
-            <ChipSelect
-              label="구분"
-              value={division}
-              onChange={setDivision}
-              options={DIVISION_OPTIONS}
-            />
-            <ChipSelect
-              label="단계"
-              value={level}
-              onChange={setLevel}
-              options={LEVEL_OPTIONS}
-            />
+              <p className="mt-3 text-[11px] text-gray-400">국립중앙도서관 Open API 결과를 사용합니다.</p>
+            </div>
+          </aside>
 
-            {/* 카테고리(멀티 태그 + 제안/자유추가) */}
-            <TagsInput
-              label="카테고리"
-              tags={categories}
-              setTags={setCategories}
-              suggestions={CATEGORY_SUGGESTIONS}
-              required
-            />
+          {/* 우측 폼 */}
+          <section className="md:col-span-5">
+            <form onSubmit={handleSubmit} className="rounded-2xl border border-gray-200 bg-white p-6 shadow">
+              <div className="grid gap-5">
+                <InputField
+                  label="작성자 이름 (registrant)"
+                  name="registrant"
+                  value={registrant}
+                  onChange={setRegistrant}
+                  required
+                  placeholder="예: 홍길동"
+                />
+                <InputField
+                  label="이메일 (email/e-mail)"
+                  name="email"
+                  value={email}
+                  onChange={setEmail}
+                  required
+                  placeholder="예: you@example.com"
+                  type="email"
+                />
 
-            {/* 링크/이미지/설명/메모 */}
-            <InputField
-              label="구매 링크"
-              name="buy_link"
-              value={buyLink}
-              onChange={setBuyLink}
-              placeholder="https:// 예: 알라딘/예스24 등"
-              type="url"
-            />
-            <InputField
-              label="표지 이미지 URL"
-              name="image"
-              value={image}
-              onChange={setImage}
-              placeholder="https:// 이미지 주소(있다면)"
-              type="url"
-            />
-            <TextArea
-              label="소개/설명"
-              name="description"
-              value={description}
-              onChange={setDescription}
-              placeholder="책 내용을 간단히 요약해 주세요."
-              rows={5}
-            />
-            <TextArea
-              label="등록 이유/비고"
-              name="reason"
-              value={reason}
-              onChange={setReason}
-              placeholder="왜 이 책을 등록하나요? 추천 이유, 메모 등"
-              rows={4}
-            />
-          </div>
+                <InputField label="제목" name="title" value={title} onChange={setTitle} required placeholder="도서 제목" />
+                <InputField
+                  label="저자"
+                  name="author"
+                  value={author}
+                  onChange={setAuthor}
+                  required
+                  placeholder="저자 전체 이름 (공백 포함 그대로)"
+                />
+                <InputField
+                  label="역자"
+                  name="translator"
+                  value={translator}
+                  onChange={setTranslator}
+                  placeholder="역자(있다면 전체 이름)"
+                />
+                <InputField
+                  label="출판사"
+                  name="publisher"
+                  value={publisher}
+                  onChange={setPublisher}
+                  required
+                  placeholder="출판사명"
+                />
+                <InputField label="ISBN" name="isbn" value={isbn} onChange={setIsbn} placeholder="예: 9781234567890" />
+                <InputField label="테마" name="theme" value={theme} onChange={setTheme} placeholder="예: 철학, 역사, 과학" />
 
-          <div className="mt-8 flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => history.back()}
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-100"
-            >
-              취소
-            </button>
-            <button
-              type="submit"
-              disabled={submitting || !requiredOk}
-              className={`rounded-lg px-4 py-2 text-white ${
-                submitting || !requiredOk
-                  ? "bg-blue-300"
-                  : "bg-blue-600 hover:bg-blue-700"
-              }`}
-            >
-              {submitting ? "등록 중..." : "등록하기"}
-            </button>
-          </div>
-        </form>
+                <ChipSelect label="구분" value={division} onChange={setDivision} options={DIVISION_OPTIONS} />
+                <ChipSelect label="단계" value={level} onChange={setLevel} options={LEVEL_OPTIONS} />
 
-        <p className="mt-4 text-xs text-gray-500">
-          ※ ID와 등록일(created_at)은 자동 생성되어 저장됩니다.
-        </p>
+                <TagsInput
+                  label="카테고리"
+                  tags={categories}
+                  setTags={setCategories}
+                  suggestions={CATEGORY_SUGGESTIONS}
+                  required
+                />
+
+                <InputField
+                  label="구매 링크"
+                  name="buy_link"
+                  value={buyLink}
+                  onChange={setBuyLink}
+                  placeholder="https:// 예: 알라딘/예스24 등"
+                  type="url"
+                />
+                <InputField
+                  label="표지 이미지 URL"
+                  name="image"
+                  value={image}
+                  onChange={setImage}
+                  placeholder="https:// 이미지 주소(있다면)"
+                  type="url"
+                />
+                <TextArea
+                  label="소개/설명"
+                  name="description"
+                  value={description}
+                  onChange={setDescription}
+                  placeholder="책 내용을 간단히 요약해 주세요."
+                  rows={5}
+                />
+                <TextArea
+                  label="등록 이유/비고"
+                  name="reason"
+                  value={reason}
+                  onChange={setReason}
+                  placeholder="왜 이 책을 등록하나요? 추천 이유, 메모 등"
+                  rows={4}
+                />
+              </div>
+
+              <div className="mt-8 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => history.back()}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-100"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting || !requiredOk}
+                  className={`rounded-lg px-4 py-2 text-white ${
+                    submitting || !requiredOk ? "bg-blue-300" : "bg-blue-600 hover:bg-blue-700"
+                  }`}
+                >
+                  {submitting ? "등록 중..." : "등록하기"}
+                </button>
+              </div>
+            </form>
+
+            <p className="mt-4 text-xs text-gray-500">※ ID와 등록일(created_at)은 자동 생성되어 저장됩니다.</p>
+          </section>
+        </div>
       </div>
 
-      {/* 성공 안내 오버레이 */}
       {success && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-[90%] max-w-md rounded-2xl bg-white p-6 text-center shadow-xl">
-            <h2 className="mb-2 text-xl font-bold text-blue-700">
-              등록해주셔서 감사합니다!
-            </h2>
-            <p className="text-gray-700">
-              오늘도 지도 하나가 완성됐습니다.
-            </p>
-            <p className="mt-3 text-sm text-gray-500">
-              {countdown}초 후 홈 화면으로 이동합니다.
-            </p>
+            <h2 className="mb-2 text-xl font-bold text-blue-700">등록해주셔서 감사합니다!</h2>
+            <p className="text-gray-700">오늘도 지도 하나가 완성됐습니다.</p>
+            <p className="mt-3 text-sm text-gray-500">{countdown}초 후 홈 화면으로 이동합니다.</p>
           </div>
         </div>
       )}
