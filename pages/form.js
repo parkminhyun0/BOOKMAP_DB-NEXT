@@ -3,9 +3,13 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 
 const DIVISION_OPTIONS = ["국내서", "국외서", "원서", "번역서"];
-const CATEGORY_SUGGESTIONS = ["철학","역사","문학(국내)","문학(해외)","사회","정치","경제","심리","종교","예술","교육","언어","문화","과학사"];
+const CATEGORY_SUGGESTIONS = [
+  "철학","역사","문학(국내)","문학(해외)","사회","정치",
+  "경제","심리","종교","예술","교육","언어","문화","과학사",
+];
 const LEVEL_OPTIONS = ["입문","초급","중급","고급","전문"];
 
+/* ── 공통 입력 UI ───────────────────────────────────────── */
 function InputField({ label, name, value, onChange, required=false, placeholder="", type="text" }) {
   const [showPh, setShowPh] = useState(true);
   return (
@@ -22,7 +26,9 @@ function InputField({ label, name, value, onChange, required=false, placeholder=
         onFocus={()=>setShowPh(false)}
         onBlur={(e)=>setShowPh(e.target.value.trim()==="")}
         placeholder={showPh ? placeholder : ""}
-        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2
+                   text-gray-900 placeholder:text-gray-600 focus:outline-none
+                   focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
       />
     </div>
   );
@@ -44,7 +50,9 @@ function TextArea({ label, name, value, onChange, required=false, placeholder=""
         onFocus={()=>setShowPh(false)}
         onBlur={(e)=>setShowPh(e.target.value.trim()==="")}
         placeholder={showPh ? placeholder : ""}
-        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2
+                   text-gray-900 placeholder:text-gray-600 focus:outline-none
+                   focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
       />
     </div>
   );
@@ -53,14 +61,20 @@ function TextArea({ label, name, value, onChange, required=false, placeholder=""
 function ChipSelect({ label, value, onChange, options, required=false }) {
   return (
     <div className="space-y-2">
-      <div className="text-sm font-medium text-gray-700">{label} {required && <span className="text-red-500">*</span>}</div>
+      <div className="text-sm font-medium text-gray-700">
+        {label} {required && <span className="text-red-500">*</span>}
+      </div>
       <div className="flex flex-wrap gap-2">
         {options.map((opt)=>(
           <button
             key={opt}
             type="button"
             onClick={()=>onChange(opt)}
-            className={`rounded-full border px-3 py-1.5 text-sm transition ${value===opt ? "border-blue-600 bg-blue-600 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-100"}`}
+            className={`rounded-full border px-3 py-1.5 text-sm transition ${
+              value===opt
+                ? "border-blue-600 bg-blue-600 text-white"
+                : "border-gray-300 bg-white text-gray-700 hover:bg-gray-100"
+            }`}
           >
             {opt}
           </button>
@@ -73,13 +87,21 @@ function ChipSelect({ label, value, onChange, options, required=false }) {
 function TagsInput({ label, tags, setTags, suggestions=[], required=false, placeholder="엔터/쉼표/탭으로 추가 · 클릭으로 선택" }) {
   const [input, setInput] = useState("");
   const [showPh, setShowPh] = useState(true);
+
   const addTag = (t)=>{ const v=t.trim(); if(!v) return; if(!tags.includes(v)) setTags([...tags, v]); };
   const removeTag = (t)=> setTags(tags.filter((x)=>x!==t));
   const onKeyDown = (e)=>{ if(["Enter",",","Tab"].includes(e.key)){ e.preventDefault(); addTag(input); setInput(""); setShowPh(true); } };
-  const filtered = suggestions.filter((s)=>s.toLowerCase().includes(input.trim().toLowerCase())).slice(0,8);
+
+  const filtered = suggestions
+    .filter((s)=>s.toLowerCase().includes(input.trim().toLowerCase()))
+    .slice(0,8);
+
   return (
     <div className="space-y-2">
-      <div className="text-sm font-medium text-gray-700">{label} {required && <span className="text-red-500">*</span>}</div>
+      <div className="text-sm font-medium text-gray-700">
+        {label} {required && <span className="text-red-500">*</span>}
+      </div>
+
       <div className="flex flex-wrap gap-2">
         {tags.map((t)=>(
           <span key={t} className="inline-flex items-center gap-2 rounded-full border border-blue-300 bg-blue-50 px-3 py-1 text-sm text-blue-700">
@@ -88,6 +110,7 @@ function TagsInput({ label, tags, setTags, suggestions=[], required=false, place
           </span>
         ))}
       </div>
+
       <input
         value={input}
         onChange={(e)=>setInput(e.target.value)}
@@ -95,15 +118,24 @@ function TagsInput({ label, tags, setTags, suggestions=[], required=false, place
         onFocus={()=>setShowPh(false)}
         onBlur={(e)=>setShowPh(e.target.value.trim()==="")}
         placeholder={showPh ? placeholder : ""}
-        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2
+                   text-gray-900 placeholder:text-gray-600 focus:outline-none
+                   focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
       />
+
       {filtered.length>0 && (
         <div className="rounded-lg border border-gray-200 bg-white p-3">
           <div className="mb-2 text-xs text-gray-500">제안 목록</div>
           <ul className="list-disc marker:text-gray-400 pl-5 space-y-1">
             {filtered.map((sug)=>(
               <li key={sug}>
-                <button type="button" onClick={()=>{ addTag(sug); setInput(""); setShowPh(true); }} className="text-sm text-gray-700 hover:underline">{sug}</button>
+                <button
+                  type="button"
+                  onClick={()=>{ addTag(sug); setInput(""); setShowPh(true); }}
+                  className="text-sm text-gray-700 hover:underline"
+                >
+                  {sug}
+                </button>
               </li>
             ))}
           </ul>
@@ -113,9 +145,10 @@ function TagsInput({ label, tags, setTags, suggestions=[], required=false, place
   );
 }
 
+/* ── 국립중앙도서관 검색 패널 ───────────────────────────── */
 function KorLibSearch({ onApply }) {
   const [q, setQ] = useState("");
-  const [provider, setProvider] = useState("kolis");
+  const [provider, setProvider] = useState("kolis"); // kolis | seoji
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -123,43 +156,47 @@ function KorLibSearch({ onApply }) {
   const search = async () => {
     setErr(""); setLoading(true); setItems([]);
     try {
-      const r = await fetch(`/api/korlib?q=${encodeURIComponent(q)}&provider=${provider}&page=1&size=20`);
-      let j = null;
-      try { j = await r.json(); } catch { /* ignore */ }
-      if (!r.ok) {
-        setErr(j?.error ? `오류: ${j.error}` : `오류: HTTP ${r.status}`);
-        return;
-      }
-      setItems(Array.isArray(j?.items) ? j.items : []);
-      if ((j?.items?.length ?? 0) === 0) setErr("검색 결과가 없습니다.");
-    } catch {
-      setErr("검색 실패(네트워크 오류)");
+      const r = await fetch(
+        `/api/korlib?q=${encodeURIComponent(q)}&provider=${provider}&page=1&size=20`,
+        { cache: "no-store" }
+      );
+      const j = await r.json();
+      if (j.error) throw new Error(j.error);
+      setItems(Array.isArray(j.items) ? j.items : []);
+    } catch (e) {
+      setErr(e.message || "검색 실패");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm overflow-hidden">
       <div className="mb-4">
-        <div className="text-sm font-semibold text-gray-800 mb-2">국립중앙도서관 검색</div>
+        <div className="mb-2 text-sm font-semibold text-gray-800">
+          국립중앙도서관 검색
+        </div>
 
-        <div className="flex gap-2 items-center">
+        <div className="flex min-w-0 gap-2">
           <select
             value={provider}
-            onChange={(e) => setProvider(e.target.value)}
-            className="w-[120px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            onChange={(e)=>setProvider(e.target.value)}
+            className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-2
+                       text-gray-900 focus:outline-none focus:ring-2
+                       focus:ring-blue-600 focus:border-blue-600"
           >
-            <option value="kolis">KOLIS-NET</option>
+            <option value="kolis">KOLIS-NE</option>
             <option value="seoji">서지(ISBN)</option>
           </select>
 
           <input
             value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && search()}
+            onChange={(e)=>setQ(e.target.value)}
+            onKeyDown={(e)=>e.key==="Enter" && search()}
             placeholder="도서명/저자 등 입력 후 Enter"
-            className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2
+                       text-gray-900 placeholder:text-gray-600 focus:outline-none
+                       focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
           />
 
           <button
@@ -171,17 +208,17 @@ function KorLibSearch({ onApply }) {
           </button>
         </div>
 
-        {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
+        {err && <p className="mt-2 text-sm text-red-600">오류: {err}</p>}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[520px] overflow-auto pr-1">
+      <div className="grid max-h-[520px] grid-cols-1 gap-3 overflow-auto pr-1 sm:grid-cols-2">
         {loading
           ? Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="flex gap-3 rounded-lg border border-gray-200 p-3 animate-pulse">
                 <div className="h-20 w-16 rounded bg-gray-200" />
                 <div className="flex-1">
-                  <div className="h-4 w-4/5 rounded bg-gray-200 mb-2" />
-                  <div className="h-3 w-3/5 rounded bg-gray-200 mb-1" />
+                  <div className="mb-2 h-4 w-4/5 rounded bg-gray-200" />
+                  <div className="mb-1 h-3 w-3/5 rounded bg-gray-200" />
                   <div className="h-3 w-2/5 rounded bg-gray-200" />
                 </div>
               </div>
@@ -196,15 +233,15 @@ function KorLibSearch({ onApply }) {
                   )}
                 </div>
                 <div className="flex-1">
-                  <div className="font-semibold text-sm text-gray-900 line-clamp-2">{it.title}</div>
-                  <div className="text-xs text-gray-700 mt-0.5 line-clamp-1">{it.author}</div>
+                  <div className="text-sm font-semibold text-gray-900 line-clamp-2">{it.title}</div>
+                  <div className="mt-0.5 text-xs text-gray-700 line-clamp-1">{it.author}</div>
                   <div className="text-[11px] text-gray-500 line-clamp-1">
                     {it.publisher} {it.ISBN ? `· ${it.ISBN}` : ""}
                   </div>
                   <div className="mt-2">
                     <button
                       type="button"
-                      onClick={() => onApply(it)}
+                      onClick={()=>onApply(it)}
                       className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-600 hover:bg-blue-100"
                     >
                       이 항목 적용
@@ -218,9 +255,11 @@ function KorLibSearch({ onApply }) {
   );
 }
 
+/* ── 본문 페이지 ─────────────────────────────────────────── */
 export default function BookForm() {
   const router = useRouter();
 
+  // 작성자/도서 필드
   const [registrant, setRegistrant] = useState("");
   const [email, setEmail] = useState("");
   const [title, setTitle] = useState("");
@@ -241,55 +280,46 @@ export default function BookForm() {
   const [success, setSuccess] = useState(false);
   const [countdown, setCountdown] = useState(3);
 
-  const requiredOk = registrant && email && title && author && publisher && categories.length > 0;
+  const requiredOk = registrant && email && title && author && publisher && categories.length>0;
 
   useEffect(() => {
     if (!success) return;
     const t = setInterval(() => {
       setCountdown((c) => {
-        if (c <= 1) {
-          clearInterval(t);
-          router.push("/home");
-          return 0;
-        }
+        if (c <= 1) { clearInterval(t); router.push("/home"); return 0; }
         return c - 1;
       });
     }, 1000);
     return () => clearInterval(t);
   }, [success, router]);
 
+  // 검색 결과 적용
+  const applyFromKorlib = (it) => {
+    if (!it) return;
+    if (it.title) setTitle(it.title);
+    if (it.author) setAuthor(it.author);
+    if (it.publisher) setPublisher(it.publisher);
+    if (it.ISBN) setIsbn(it.ISBN);
+    if (it.image) setImage(it.image);
+    if (it.description) setDescription(it.description);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!requiredOk) {
-      alert("필수 항목을 입력해주세요. (작성자/이메일/제목/저자/출판사/카테고리)");
-      return;
-    }
+    if (!requiredOk) { alert("필수 항목을 입력해주세요. (작성자/이메일/제목/저자/출판사/카테고리)"); return; }
     setSubmitting(true);
 
-    const now = new Date();
-    const pad = (n) => String(n).padStart(2, "0");
-    const created_at = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const now = new Date(); const pad = (n)=>String(n).padStart(2,"0");
+    const created_at = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
     const id = String(Date.now());
 
     const payload = {
-      id,
-      created_at,
-      registrant,
-      email,
-      "e-mail": email,
-      title,
-      author,
-      translator,
-      publisher,
-      isbn,
-      theme,
-      level,
-      division,
+      id, created_at,
+      registrant, email, "e-mail": email,
+      title, author, translator, publisher,
+      isbn, theme, level, division,
       category: categories.join(", "),
-      buy_link: buyLink,
-      image,
-      description,
-      reason,
+      buy_link: buyLink, image, description, reason,
     };
 
     try {
@@ -299,9 +329,7 @@ export default function BookForm() {
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (!res.ok || data?.success === false) {
-        throw new Error(data?.error || `등록 실패 (${res.status})`);
-      }
+      if (!res.ok || data?.success === false) throw new Error(data?.error || `등록 실패 (${res.status})`);
       setSuccess(true);
     } catch (err) {
       alert("등록 중 오류가 발생했습니다.\n" + err.message);
@@ -310,26 +338,17 @@ export default function BookForm() {
     }
   };
 
-  const applyFromKor = (it) => {
-    setTitle(it.title || "");
-    setAuthor(it.author || "");
-    setPublisher(it.publisher || "");
-    setIsbn(it.ISBN || "");
-    setImage(it.image || "");
-    if (it.description) setDescription(it.description);
-  };
-
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
         <h1 className="mb-6 text-2xl font-extrabold text-blue-600">📝 도서 등록</h1>
 
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
-          <aside className="md:col-span-4">
-            <KorLibSearch onApply={applyFromKor} />
+        <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-7">
+          <aside className="lg:col-span-2">
+            <KorLibSearch onApply={applyFromKorlib} />
           </aside>
 
-          <section className="md:col-span-8">
+          <section className="lg:col-span-5">
             <form onSubmit={handleSubmit} className="rounded-2xl border border-gray-200 bg-white p-6 shadow">
               <div className="grid gap-5">
                 <InputField label="작성자 이름 (registrant)" name="registrant" value={registrant} onChange={setRegistrant} required placeholder="예: 홍길동" />
@@ -354,13 +373,15 @@ export default function BookForm() {
               </div>
 
               <div className="mt-8 flex items-center justify-end gap-3">
-                <button type="button" onClick={() => history.back()} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-100">
+                <button type="button" onClick={()=>history.back()} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-100">
                   취소
                 </button>
                 <button
                   type="submit"
                   disabled={submitting || !requiredOk}
-                  className={`rounded-lg px-4 py-2 text-white ${submitting || !requiredOk ? "bg-blue-300" : "bg-blue-600 hover:bg-blue-700"}`}
+                  className={`rounded-lg px-4 py-2 text-white ${
+                    submitting || !requiredOk ? "bg-blue-300" : "bg-blue-600 hover:bg-blue-700"
+                  }`}
                 >
                   {submitting ? "등록 중..." : "등록하기"}
                 </button>
