@@ -123,13 +123,17 @@ function KorLibSearch({ onApply }) {
   const search = async () => {
     setErr(""); setLoading(true); setItems([]);
     try {
-      const r = await fetch(
-        `/api/korlib?q=${encodeURIComponent(q)}&provider=${provider}&page=1&size=20`
-      );
-      const j = await r.json();
-      setItems(Array.isArray(j.items) ? j.items : []);
+      const r = await fetch(`/api/korlib?q=${encodeURIComponent(q)}&provider=${provider}&page=1&size=20`);
+      let j = null;
+      try { j = await r.json(); } catch { /* ignore */ }
+      if (!r.ok) {
+        setErr(j?.error ? `오류: ${j.error}` : `오류: HTTP ${r.status}`);
+        return;
+      }
+      setItems(Array.isArray(j?.items) ? j.items : []);
+      if ((j?.items?.length ?? 0) === 0) setErr("검색 결과가 없습니다.");
     } catch {
-      setErr("검색 실패");
+      setErr("검색 실패(네트워크 오류)");
     } finally {
       setLoading(false);
     }
@@ -139,15 +143,17 @@ function KorLibSearch({ onApply }) {
     <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="mb-4">
         <div className="text-sm font-semibold text-gray-800 mb-2">국립중앙도서관 검색</div>
-        <div className="flex gap-2">
+
+        <div className="flex gap-2 items-center">
           <select
             value={provider}
             onChange={(e) => setProvider(e.target.value)}
-            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-[120px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="kolis">KOLIS-NET</option>
             <option value="seoji">서지(ISBN)</option>
           </select>
+
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -155,14 +161,16 @@ function KorLibSearch({ onApply }) {
             placeholder="도서명/저자 등 입력 후 Enter"
             className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
+
           <button
             type="button"
             onClick={search}
-            className="rounded-lg bg-gray-900 px-4 py-2 text-white hover:bg-black"
+            className="shrink-0 rounded-lg bg-gray-900 px-4 py-2 text-white hover:bg-black"
           >
             검색
           </button>
         </div>
+
         {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
       </div>
 
@@ -316,12 +324,12 @@ export default function BookForm() {
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
         <h1 className="mb-6 text-2xl font-extrabold text-blue-600">📝 도서 등록</h1>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <aside className="md:col-span-1">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
+          <aside className="md:col-span-4">
             <KorLibSearch onApply={applyFromKor} />
           </aside>
 
-          <section className="md:col-span-2">
+          <section className="md:col-span-8">
             <form onSubmit={handleSubmit} className="rounded-2xl border border-gray-200 bg-white p-6 shadow">
               <div className="grid gap-5">
                 <InputField label="작성자 이름 (registrant)" name="registrant" value={registrant} onChange={setRegistrant} required placeholder="예: 홍길동" />
