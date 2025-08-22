@@ -6,32 +6,30 @@ import Loader from "@/components/Loader";
 /* ─────────────────────────────────────────────────────────────
    🔧 손대기 쉬운 옵션
    ───────────────────────────────────────────────────────────── */
-const STICKY_TOP = 96;        // 좌측 고정 패널이 화면 상단에서 떨어지는 거리(px)
-const STICKY_HEIGHT = 640;    // 좌측 고정 패널 높이(px)
-const TITLE_MAX_PX = 16;      // 카드 제목 최대 글자 크기(px)
-const TITLE_MIN_PX = 12;      // 카드 제목 최소 글자 크기(px)
-const TITLE_PADDING_H = 12;   // 측정시 좌우 여유 픽셀
-const ENABLE_TEST_PLACEHOLDERS = false; // 테스트시 true 끝나면 false 로 변경!
+const STICKY_TOP = 96;
+const STICKY_HEIGHT = 640;
+const TITLE_MAX_PX = 16;
+const TITLE_MIN_PX = 12;
+const TITLE_PADDING_H = 12;
+const ENABLE_TEST_PLACEHOLDERS = false;
 const TEST_PLACEHOLDER_COUNT = 30;
 /* ───────────────────────────────────────────────────────────── */
 
-/* ✅ 안전한 key 생성 (id 우선, 없으면 제목/저자/출판사+인덱스) */
+/* ✅ 안전한 key 생성 */
 function keyFor(book, idx) {
   const hasId = book && book.id != null && String(book.id).trim() !== "";
-  if (hasId) return String(book.id); // 숫자/문자 혼용 방지
+  if (hasId) return String(book.id);
   const t = (book?.title || "").slice(0, 50);
   const a = (book?.author || "").slice(0, 50);
   const p = (book?.publisher || "").slice(0, 50);
   return `${t}|${a}|${p}|${idx}`;
 }
 
-/* ✅ created_at/id 기준 최신순 정렬 (등록 즉시 위로 올라오게) */
+/* ✅ 최신순 정렬(created_at → id 보조) */
 function toStamp(created_at, id) {
-  // created_at(YYYY-MM-DD HH:mm:ss 또는 ISO) → 숫자 타임스탬프
   const s = String(created_at || "").trim();
   const t = s ? Date.parse(s.replace(" ", "T")) : NaN;
   if (!Number.isNaN(t)) return t;
-  // created_at이 없다면 id를 숫자로 파싱(밀리초 id 가정)해서 보조 정렬
   const n = Number(id);
   return Number.isFinite(n) ? n : 0;
 }
@@ -39,7 +37,7 @@ function sortBooks(arr) {
   return [...arr].sort((a, b) => toStamp(b.created_at, b.id) - toStamp(a.created_at, a.id));
 }
 
-/* ✅ 제목 1줄 자동 맞춤 (카드 너비 실측 → 폰트 크기 자동 조절) */
+/* ✅ 제목 1줄 자동 맞춤 */
 function FitOneLine({ text, className = "" }) {
   const wrapperRef = useRef(null);
   const spanRef = useRef(null);
@@ -90,7 +88,7 @@ function FitOneLine({ text, className = "" }) {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   🧱 도서 카드 (실데이터 + 테스트용 공백 카드)
+   🧱 도서 카드 + 스켈레톤
    ───────────────────────────────────────────────────────────── */
 function BookCard({ book }) {
   if (book.__placeholder) {
@@ -121,10 +119,7 @@ function BookCard({ book }) {
           )}
         </div>
 
-        {/* 제목: 1줄 + 자동 맞춤 */}
         <FitOneLine text={book.title} className="mt-3 font-semibold text-gray-900" />
-
-        {/* 보조 정보(1줄) */}
         <p className="mt-1 text-xs text-gray-600 line-clamp-1">{book.author}</p>
         <p className="text-[11px] text-gray-400 line-clamp-1">{book.publisher}</p>
       </Link>
@@ -146,9 +141,7 @@ function BookCardSkeleton() {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   🏷️ “정해진 탭” 필터 바
-   - 전체 | 카테고리 | 단계 | 저자 | 역자 | 주제 | 장르 | 구분
-   - ✅ 저자/역자: 어떤 구분자도 사용하지 않고, "필드 전체 문자열" 1개로 취급
+   🏷️ 필터 바 (그대로 유지)
    ───────────────────────────────────────────────────────────── */
 const LEVEL_ORDER = ["입문", "초급", "중급", "고급", "전문"];
 const DIVISION_ORDER = ["국내서", "국외서", "원서", "번역서"];
@@ -165,24 +158,21 @@ function normalizeDivision(v) {
   return s;
 }
 
-// 목록형 필드(카테고리/주제/장르 등)만 분리 — 공백은 분리자로 쓰지 않음
 function splitList(input) {
   if (!input) return [];
   let s = String(input);
-  s = s.replace(/[\/|·•]/g, ",").replace(/[，、・／]/g, ","); // 다양한 구분자 → 쉼표
+  s = s.replace(/[\/|·•]/g, ",").replace(/[，、・／]/g, ",");
   return s
     .split(",")
     .map((t) => t.trim())
     .filter(Boolean);
 }
 
-// ✅ 저자/역자: “절대 분리하지 않고” 전체 문자열 그대로 사용
 function getWholeField(input) {
   const s = norm(input);
   return s ? [s] : [];
 }
 
-// 목록에서 탭 값 수집
 function extractFacetValues(books) {
   const setCategory = new Set();
   const setAuthor = new Set();
@@ -194,8 +184,8 @@ function extractFacetValues(books) {
 
   for (const b of books) {
     splitList(b.category).forEach((t) => setCategory.add(t));
-    getWholeField(b.author).forEach((t) => setAuthor.add(t)); // 전체 문자열
-    getWholeField(b.translator ?? b["역자"]).forEach((t) => setTranslator.add(t)); // 전체 문자열
+    getWholeField(b.author).forEach((t) => setAuthor.add(t));
+    getWholeField(b.translator ?? b["역자"]).forEach((t) => setTranslator.add(t));
     splitList(b.subject).forEach((t) => setSubject.add(t));
     splitList(b.genre).forEach((t) => setGenre.add(t));
     const div = normalizeDivision(b.division);
@@ -221,7 +211,6 @@ function extractFacetValues(books) {
   };
 }
 
-// 선택된 탭/값에 따라 실제 필터링
 function filterBooksByFacet(books, facet) {
   const { type, value } = facet || {};
   if (!type || type === "전체" || !value) return books;
@@ -234,9 +223,9 @@ function filterBooksByFacet(books, facet) {
       case "단계":
         return norm(b.level).toLowerCase() === v;
       case "저자":
-        return norm(b.author).toLowerCase() === v; // 전체 문자열과 정확히 일치
+        return norm(b.author).toLowerCase() === v;
       case "역자":
-        return norm(b.translator ?? b["역자"]).toLowerCase() === v; // 전체 문자열과 정확히 일치
+        return norm(b.translator ?? b["역자"]).toLowerCase() === v;
       case "주제":
         return splitList(b.subject).map((t) => t.toLowerCase()).includes(v);
       case "장르":
@@ -249,7 +238,6 @@ function filterBooksByFacet(books, facet) {
   });
 }
 
-// 상단 필터바 UI
 function FilterBar({ facets, facet, onChange }) {
   const TABS = ["전체", "카테고리", "단계", "저자", "역자", "주제", "장르", "구분"];
 
@@ -267,7 +255,6 @@ function FilterBar({ facets, facet, onChange }) {
 
   return (
     <div className="mb-5">
-      {/* 탭(종류) */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         {TABS.map((t) => (
           <button
@@ -284,7 +271,6 @@ function FilterBar({ facets, facet, onChange }) {
         ))}
       </div>
 
-      {/* 값 칩(해당 탭 선택 시) */}
       {facet.type !== "전체" && (
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -325,25 +311,33 @@ function FilterBar({ facets, facet, onChange }) {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   📄 실제 페이지 (좌 2 + 우 5, 우측 5열 카드)
+   📄 페이지
    ───────────────────────────────────────────────────────────── */
 export default function BookListGrid() {
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showSkeleton, setShowSkeleton] = useState(false);
+  const [overlay, setOverlay] = useState(true); // 진입 즉시 오버레이 ON
   const [error, setError] = useState(null);
-
-  // 현재 선택된 필터: { type: '전체' | '카테고리' | ... , value: string|null }
   const [facet, setFacet] = useState({ type: "전체", value: null });
 
-  // 짧은 로딩 깜빡임 방지
   useEffect(() => {
-    let t;
-    if (loading) t = setTimeout(() => setShowSkeleton(true), 250);
-    return () => clearTimeout(t);
+    let skelTimer;
+    if (loading) skelTimer = setTimeout(() => setShowSkeleton(true), 250);
+    return () => clearTimeout(skelTimer);
   }, [loading]);
 
-  // 데이터 로드 (원격+로컬 병합 API)
+  // 오버레이: 로딩 끝난 후 200ms 동안 유지 → 부드럽게 사라짐
+  useEffect(() => {
+    if (loading) {
+      setOverlay(true);
+    } else {
+      const t = setTimeout(() => setOverlay(false), 200);
+      return () => clearTimeout(t);
+    }
+  }, [loading]);
+
+  // 데이터 로드
   useEffect(() => {
     setError(null);
     fetch("/api/books?source=both&prefer=remote")
@@ -355,7 +349,6 @@ export default function BookListGrid() {
         return res.json();
       })
       .then((raw) => {
-        // id 문자열 표준화 + 정렬(최신순)
         const normalized = (raw || []).map((b) => ({
           ...b,
           id: b?.id != null ? String(b.id) : null,
@@ -369,7 +362,6 @@ export default function BookListGrid() {
   const facets = useMemo(() => extractFacetValues(books), [books]);
   const filtered = useMemo(() => filterBooksByFacet(books, facet), [books, facet]);
 
-  // 스크롤 테스트용 공백 카드 (원하면 ON)
   const displayed = useMemo(() => {
     if (!ENABLE_TEST_PLACEHOLDERS) return filtered;
     const placeholders = Array.from({ length: TEST_PLACEHOLDER_COUNT }, (_, i) => ({
@@ -386,7 +378,17 @@ export default function BookListGrid() {
   const totalCount = filtered.length;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50" aria-busy={loading}>
+      {/* 로딩 오버레이 */}
+      {overlay && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-white/70 backdrop-blur-sm transition-opacity duration-200">
+          <div className="rounded-xl bg-white/90 px-5 py-4 shadow-md">
+            <Loader text="도서 목록을 불러오는 중입니다..." />
+            <p className="mt-2 text-xs text-gray-500">잠시만 기다려 주세요.</p>
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="mb-3 flex items-end justify-between">
           <h1 className="text-2xl font-extrabold text-blue-600">📚 도서목록</h1>
@@ -394,7 +396,7 @@ export default function BookListGrid() {
         </div>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-7">
-          {/* 좌측: 고정(sticky) 박스 */}
+          {/* 좌측: 고정 패널 */}
           <aside className="hidden md:col-span-2 md:block">
             <div
               className="rounded-2xl border border-dashed border-gray-300 bg-white/60 p-4"
@@ -406,7 +408,7 @@ export default function BookListGrid() {
             </div>
           </aside>
 
-          {/* 우측: 필터바 + 5열 카드 그리드 */}
+          {/* 우측: 필터 + 그리드 */}
           <section className="md:col-span-5">
             <FilterBar facets={facets} facet={facet} onChange={setFacet} />
 
