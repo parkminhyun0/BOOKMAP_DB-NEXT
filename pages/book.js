@@ -35,7 +35,7 @@ const TITLE_PADDING_H = 12;
 /** [테스트 전용] 스크롤/레이아웃 확인용 가짜(placeholder) 카드 추가 여부
  *  - true  : 목록 끝에 TEST_PLACEHOLDER_COUNT 개수만큼 빈 카드가 붙습니다.
  *  - false : 실제 데이터만 표시 (배포 시 반드시 false 권장). */
-const ENABLE_TEST_PLACEHOLDERS = true;
+const ENABLE_TEST_PLACEHOLDERS = false;
 
 /** [테스트 전용] placeholder 카드 개수
  *  - ENABLE_TEST_PLACEHOLDERS 가 true일 때만 적용됩니다. */
