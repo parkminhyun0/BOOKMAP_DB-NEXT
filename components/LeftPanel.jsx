@@ -1,22 +1,15 @@
 // components/LeftPanel.jsx
 // ─────────────────────────────────────────────────────────────
-// 공용 좌측 패널(공지/NEW BOOK 슬라이드/이벤트)
-// - 어느 페이지(book.js, map.js)에서든 동일하게 쓰기 위해 컴포넌트화
-// - 사용법:
-//   <LeftPanel
-//      books={books}               // 도서 배열(최신순 슬라이드에 사용)
-//      stickyTop={96}              // 상단 고정 위치(px)
-//      stickyHeight={640}          // 패널 높이(px)
-//      slideAutoMs={2000}          // 슬라이드 자동 전환(ms)
-//      itemsPerPage={2}            // 한 페이지에 표시할 도서 수
-//      maxPages={5}                // 최대 페이지 수(=최대 2*5권)
-//   />
+// 공용 좌측 패널(공지 / NEW BOOK 슬라이드 / 이벤트)
+// ※ 높이를 '고정'하지 않고 콘텐츠 길이만큼 자동으로 늘어나도록 변경
+//   → sticky에는 top만 주고 height는 제거했습니다(잘림 방지).
+//   → book.js, map.js 어디서든 동일 UI 재사용.
 // ─────────────────────────────────────────────────────────────
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
-/** ⬇️ 도서를 '최신 등록순'으로 정렬하기 위한 유틸(독립적으로 사용) */
+/** 최신 등록순 정렬 유틸 */
 function toStamp(created_at, id) {
   const s = String(created_at || "").trim();
   const t = s ? Date.parse(s.replace(" ", "T")) : NaN;
@@ -28,7 +21,7 @@ function sortBooks(arr) {
   return [...arr].sort((a, b) => toStamp(b.created_at, b.id) - toStamp(a.created_at, a.id));
 }
 
-/** ⬇️ 슬라이드에서 쓰는 작고 단순한 미니 카드 */
+/** 미니 카드(슬라이드용) */
 function MiniBookCard({ book }) {
   return (
     <Link
@@ -51,22 +44,21 @@ function MiniBookCard({ book }) {
   );
 }
 
-/** ⬇️ 좌측 패널 본체 */
+/** 좌측 패널 본체 */
 export default function LeftPanel({
   books = [],
   stickyTop = 96,
-  stickyHeight = 640,
-  slideAutoMs = 2000,
+  slideAutoMs = 5000,
   itemsPerPage = 2,
   maxPages = 5,
 }) {
-  // 1) NEW BOOK 슬라이드를 위해 최신 도서 추리기
+  // 최신 도서 N권(= itemsPerPage * maxPages)
   const latest = useMemo(
     () => sortBooks(books).slice(0, itemsPerPage * maxPages),
     [books, itemsPerPage, maxPages]
   );
 
-  // 2) 페이지 나누기(한 페이지 당 itemsPerPage권)
+  // 페이지 분할
   const pages = useMemo(() => {
     const arr = [];
     for (let i = 0; i < latest.length; i += itemsPerPage) {
@@ -78,7 +70,7 @@ export default function LeftPanel({
   const [page, setPage] = useState(0);
   const pageCount = pages.length || 1;
 
-  // 3) 자동 슬라이드
+  // 자동 슬라이드
   useEffect(() => {
     if (pageCount <= 1) return;
     const t = setInterval(() => setPage((p) => (p + 1) % pageCount), slideAutoMs);
@@ -88,18 +80,19 @@ export default function LeftPanel({
   return (
     <div
       className="rounded-2xl border border-dashed border-gray-300 bg-white/60 p-4"
-      style={{ position: "sticky", top: stickyTop, height: stickyHeight }}
+      // ✅ 높이 고정 제거: 잘림 방지 / sticky 고정만 유지
+      style={{ position: "sticky", top: stickyTop }}
     >
       {/* (1) 공지사항 */}
       <section className="rounded-xl border border-dashed border-gray-300 bg-white p-3">
         <h3 className="mb-2 text-sm font-semibold text-gray-700">공지사항</h3>
-
-        {/* 🛠️ EDIT ME: 공지사항 내용은 이 영역의 HTML만 바꿔도 됩니다. */}
+        {/* 🛠️ EDIT ME: 공지 내용은 이 블록만 바꾸면 됩니다 */}
         <div className="h-36 overflow-auto rounded-lg bg-gray-50 p-3 text-sm leading-6 text-gray-700">
           <ul className="list-disc pl-4">
             <li>BookMap 오픈 베타를 시작했습니다.</li>
             <li>도서 자동 채움(ISBN) 개선 작업 진행 중입니다.</li>
-            <li>문의: admin@bookmap.example</li>
+	    <li>BOOK MAP 그래픽 뷰어 개선 작업 진행 중입니다.</li>
+            <li>문의: bookmapwep@gmail.com</li>
           </ul>
         </div>
       </section>
@@ -109,7 +102,7 @@ export default function LeftPanel({
         <h3 className="mb-2 text-sm font-semibold text-gray-700">NEW BOOK</h3>
 
         <div className="relative overflow-hidden">
-          {/* 슬라이드 트랙 */}
+          {/* 트랙 */}
           <div
             className="flex transition-transform duration-500"
             style={{ transform: `translateX(-${page * 100}%)`, width: `${pageCount * 100}%` }}
@@ -119,7 +112,7 @@ export default function LeftPanel({
                 {pg.map((b) => (
                   <MiniBookCard key={b.id} book={b} />
                 ))}
-                {/* 슬롯 고정: 마지막 페이지에 책 수가 모자라면 빈 슬롯으로 채움 */}
+                {/* 마지막 페이지 자리수 채우기 */}
                 {Array.from({ length: Math.max(0, itemsPerPage - pg.length) }).map((_, i) => (
                   <div
                     key={`empty-${i}`}
@@ -130,7 +123,7 @@ export default function LeftPanel({
             ))}
           </div>
 
-          {/* 페이지 도트 */}
+          {/* 도트 네비게이션 */}
           <div className="mt-2 flex items-center justify-center gap-2">
             {Array.from({ length: pageCount }).map((_, i) => (
               <button
@@ -149,19 +142,15 @@ export default function LeftPanel({
       {/* (3) 이벤트 */}
       <section className="mt-4 rounded-xl border border-dashed border-gray-300 bg-white p-3">
         <h3 className="mb-2 text-sm font-semibold text-gray-700">이벤트</h3>
-
-        {/* 🛠️ EDIT ME: 이벤트 내용은 이 HTML만 바꾸면 됩니다. */}
+        {/* 🛠️ EDIT ME: 이벤트 내용은 이 블록만 바꾸면 됩니다 */}
         <div className="h-36 overflow-auto rounded-lg bg-indigo-50 p-3 text-sm leading-6 text-gray-700">
           <p className="font-medium">📣 여름 독서 이벤트</p>
-          <p className="text-gray-600">도서를 등록/후기 작성 시 소정의 상품을 드립니다.</p>
+          <p className="text-gray-600">도서를 등록/후기 작성 시 차후 상응한 선물을 드리겠습니다.</p>
           <ul className="mt-2 list-disc pl-4 text-gray-600">
-            <li>기간: 8/1 ~ 8/31</li>
-            <li>대상: BookMap 회원</li>
+            <li>기간: 베타버전 끝나는 날까지</li>
+            <li>대상: BookMap 도서등록자</li>
             <li>
-              참여:{" "}
-              <Link href="/event" className="underline">
-                이벤트 페이지
-              </Link>
+              참여: <Link href="/event" className="underline">이벤트 페이지</Link>
             </li>
           </ul>
         </div>
