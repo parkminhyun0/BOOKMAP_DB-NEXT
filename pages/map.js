@@ -1,11 +1,11 @@
 // pages/map.js
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/router";
 
-/* ----------------------------------------------------------------
-   2D ForceGraph (SSR 비활성) + 로딩 플레이스홀더
----------------------------------------------------------------- */
+/* ─────────────────────────────────────────────────────────────
+   ForceGraph2D (SSR 비활성)
+   ───────────────────────────────────────────────────────────── */
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
   ssr: false,
   loading: () => (
@@ -15,32 +15,32 @@ const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
   ),
 });
 
-/* ----------------------------------------------------------------
-   상수/스타일 매핑
----------------------------------------------------------------- */
+/* ─────────────────────────────────────────────────────────────
+   상수/매핑
+   ───────────────────────────────────────────────────────────── */
 const STICKY_TOP = 96;
 const STICKY_HEIGHT = 640;
 
 const TYPES = ["카테고리", "단계", "저자", "역자", "주제", "장르", "구분"];
 
 const TYPE_COLOR = {
-  카테고리: "#a855f7",
-  단계: "#f59e0b",
-  저자: "#10b981",
-  역자: "#06b6d4",
-  주제: "#ef4444",
-  장르: "#3b82f6",
-  구분: "#9ca3af",
+  카테고리: "#a855f7", // violet-500
+  단계: "#f59e0b",     // amber-500
+  저자: "#10b981",     // emerald-500
+  역자: "#06b6d4",     // sky-500
+  주제: "#ef4444",     // red-500
+  장르: "#3b82f6",     // blue-500
+  구분: "#9ca3af",     // gray-400
 };
 
 const TYPE_DASH = {
   카테고리: [],
   단계: [],
   저자: [],
-  역자: [6, 6],
+  역자: [6, 6],       // 점선
   주제: [],
   장르: [],
-  구분: [4, 8],
+  구분: [4, 8],       // 점선
 };
 
 const TYPE_WIDTH = {
@@ -53,9 +53,9 @@ const TYPE_WIDTH = {
   구분: 1.5,
 };
 
-/* ----------------------------------------------------------------
+/* ─────────────────────────────────────────────────────────────
    유틸
----------------------------------------------------------------- */
+   ───────────────────────────────────────────────────────────── */
 const norm = (v) => String(v ?? "").trim();
 
 function normalizeDivision(v) {
@@ -68,19 +68,17 @@ function normalizeDivision(v) {
   return s;
 }
 
+// 쉼표류 분리(공백은 분리자로 X)
 function splitList(input) {
   if (!input) return [];
   let s = String(input);
   s = s.replace(/[\/|·•]/g, ",").replace(/[，、・／]/g, ",");
-  return s
-    .split(",")
-    .map((t) => t.trim())
-    .filter(Boolean);
+  return s.split(",").map((t) => t.trim()).filter(Boolean);
 }
 
 const whole = (x) => (norm(x) ? [norm(x)] : []);
 
-/* facet 목록 수집 (칩 표시용) */
+/* facet 수집(칩용) */
 function extractFacets(books) {
   const setCategory = new Set();
   const setAuthor = new Set();
@@ -129,34 +127,32 @@ function useSize(ref) {
   return size;
 }
 
-/* ----------------------------------------------------------------
-   본문
----------------------------------------------------------------- */
+/* ─────────────────────────────────────────────────────────────
+   페이지
+   ───────────────────────────────────────────────────────────── */
 export default function BookMapPage() {
   const router = useRouter();
 
-  // 데이터
+  // 데이터/상태
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
-  // 필터 탭/칩
-  const [tab, setTab] = useState("전체"); // "전체" 또는 TYPES
-  const [chip, setChip] = useState(null); // 하위 값
+  const [tab, setTab] = useState("전체");
+  const [chip, setChip] = useState(null);
 
-  // 그래프
   const wrapRef = useRef(null);
   const { width, height } = useSize(wrapRef);
-  const graphRef = useRef(null);
 
-  // 호버/툴팁
+  const graphRef = useRef(null);
+  const didFitRef = useRef(false); // zoomToFit 1회 보장
+
   const [hover, setHover] = useState({ node: null, x: 0, y: 0 });
 
-  // 마운트 이후에만 그래프 렌더(SSR 회피)
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
-  /* 데이터 로드 */
+  // 데이터 로드
   useEffect(() => {
     setErr("");
     setLoading(true);
@@ -176,16 +172,14 @@ export default function BookMapPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  /* facet 목록(칩) */
   const facets = useMemo(() => extractFacets(books), [books]);
   const chipList = useMemo(() => (TYPES.includes(tab) ? facets[tab] || [] : []), [tab, facets]);
 
-  /* 노드 필터(탭/칩) */
+  // 노드 필터: 탭만 선택 시 노드는 모두 보이고, 링크만 타입 필터됨.
   const filteredBooks = useMemo(() => {
     if (tab === "전체" || !TYPES.includes(tab)) return books;
-    if (!chip) return books; // 탭만 고른 경우: 노드는 전체 노출(대신 링크만 타입별 필터)
+    if (!chip) return books;
     const v = norm(chip).toLowerCase();
-
     return books.filter((b) => {
       switch (tab) {
         case "카테고리":
@@ -208,7 +202,7 @@ export default function BookMapPage() {
     });
   }, [books, tab, chip]);
 
-  /* 노드 생성 */
+  // 노드/링크 생성
   const nodes = useMemo(
     () =>
       filteredBooks.map((b) => ({
@@ -222,24 +216,14 @@ export default function BookMapPage() {
     [filteredBooks]
   );
 
-  /* 링크 생성
-     - 기본: filteredBooks 간 모든 관계 계산
-     - 탭이 TYPES 중 하나인 경우:
-       - chip이 비어있으면: "해당 타입" 링크만 표시
-       - chip이 있으면: "해당 타입 + 해당 값"에 해당하는 링크만 표시
-  */
   const links = useMemo(() => {
     const arr = [];
     const n = filteredBooks.length;
-
-    // 현재 탭/칩 컨텍스트
     const onlyType = TYPES.includes(tab) ? tab : null;
     const onlyValue = onlyType && chip ? norm(chip) : null;
 
     const push = (A, B, type, sameValue) => {
-      // 타입 필터
       if (onlyType && type !== onlyType) return;
-      // 값 필터(칩)
       if (onlyValue && !sameValue) return;
       arr.push({ source: String(A.id), target: String(B.id), type });
     };
@@ -250,9 +234,7 @@ export default function BookMapPage() {
         const B = filteredBooks[j];
 
         // 카테고리
-        const Ac = splitList(A.category);
-        const Bc = splitList(B.category);
-        const cat = intersectsValue(Ac, Bc);
+        const cat = commonValue(splitList(A.category), splitList(B.category));
         if (cat) push(A, B, "카테고리", cat);
 
         // 단계
@@ -267,15 +249,11 @@ export default function BookMapPage() {
         if (aT && aT === bT) push(A, B, "역자", aT);
 
         // 주제
-        const As = splitList(A.subject);
-        const Bs = splitList(B.subject);
-        const sub = intersectsValue(As, Bs);
+        const sub = commonValue(splitList(A.subject), splitList(B.subject));
         if (sub) push(A, B, "주제", sub);
 
         // 장르
-        const Ag = splitList(A.genre);
-        const Bg = splitList(B.genre);
-        const gen = intersectsValue(Ag, Bg);
+        const gen = commonValue(splitList(A.genre), splitList(B.genre));
         if (gen) push(A, B, "장르", gen);
 
         // 구분
@@ -286,53 +264,47 @@ export default function BookMapPage() {
     }
     return arr;
 
-    function intersectsValue(a, b) {
+    function commonValue(a, b) {
       if (!a.length || !b.length) return null;
       const set = new Set(a.map((x) => x.toLowerCase()));
-      for (const x of b) {
-        if (set.has(x.toLowerCase())) return x; // 공통값 하나 반환
-      }
+      for (const x of b) if (set.has(x.toLowerCase())) return x;
       return null;
     }
   }, [filteredBooks, tab, chip]);
 
-  /* 카운트 */
   const nodeCount = nodes.length;
   const linkCount = links.length;
 
-  /* 노드 색상: 탭에 따라 도트 색 바뀜(전체일 땐 회색) */
+  // 노드 컬러(현재 탭 기준, 전체면 회색)
   const nodeColor = useMemo(
     () => (TYPES.includes(tab) ? TYPE_COLOR[tab] : "#6b7280"),
     [tab]
   );
 
-  /* 캔버스 렌더러: 노드 */
-  const drawNode = (node, ctx, scale) => {
+  // 캔버스 그리기 (노드/링크/히트)
+  const drawNode = useCallback((node, ctx, scale) => {
     const r = 4.8;
     ctx.beginPath();
     ctx.fillStyle = nodeColor;
     ctx.arc(node.x, node.y, r, 0, 2 * Math.PI, false);
     ctx.fill();
 
-    // 레이블
     const label = node.title || "";
     ctx.font = `${Math.max(10, 12 / Math.pow(scale, 0.15))}px ui-sans-serif,-apple-system,BlinkMacSystemFont`;
     ctx.textBaseline = "top";
     ctx.fillStyle = "#374151";
     ctx.fillText(label, node.x + 8, node.y + 6);
-  };
+  }, [nodeColor]);
 
-  /* 포인터 히트영역(드래그/호버 안정성 ↑) */
-  const nodePointerAreaPaint = (node, color, ctx) => {
+  const nodePointerAreaPaint = useCallback((node, color, ctx) => {
     const r = 8;
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.arc(node.x, node.y, r, 0, 2 * Math.PI, false);
     ctx.fill();
-  };
+  }, []);
 
-  /* 링크(점선/두께 반영) */
-  const drawLink = (link, ctx) => {
+  const drawLink = useCallback((link, ctx) => {
     const color = TYPE_COLOR[link.type] || "#9ca3af";
     const width = TYPE_WIDTH[link.type] || 1.5;
     const dash = TYPE_DASH[link.type] || [];
@@ -346,34 +318,27 @@ export default function BookMapPage() {
     ctx.lineTo(link.target.x, link.target.y);
     ctx.stroke();
     ctx.restore();
-  };
+  }, []);
 
-  /* 호버 → 컨테이너 상대 좌표로 툴팁 표시 */
-  const handleHover = (node) => {
-    if (!isClient || !node || !graphRef.current) {
+  // 호버 → 화면좌표로 변환해 툴팁 위치
+  const handleHover = useCallback((node) => {
+    if (!node || !graphRef.current) {
       setHover({ node: null, x: 0, y: 0 });
       return;
     }
     const p = graphRef.current.graph2ScreenCoords(node.x, node.y);
     setHover({ node, x: p.x, y: p.y });
-  };
+  }, []);
 
-  const handleClick = (node) => {
+  const handleClick = useCallback((node) => {
     if (node?.id) router.push(`/book/${node.id}`);
-  };
+  }, [router]);
 
-  /* 데이터 바뀔 때마다 보기 좋게 zoom-to-fit */
+  // 데이터/필터 변경 시 엔진 종료 후 1회 zoomToFit
   useEffect(() => {
-    if (!graphRef.current || !width || !height) return;
-    const t = setTimeout(() => {
-      try {
-        graphRef.current.zoomToFit(400, 40);
-      } catch {}
-    }, 200);
-    return () => clearTimeout(t);
-  }, [width, height, nodeCount, linkCount, tab, chip]);
+    didFitRef.current = false; // 키 변경마다 초기화
+  }, [nodeCount, linkCount, tab, chip]);
 
-  /* 강제 리마운트 키 (시뮬/브러시 재초기화) */
   const graphKey = `${tab}|${chip ?? "ALL"}|${nodeCount}|${linkCount}`;
 
   return (
@@ -381,9 +346,7 @@ export default function BookMapPage() {
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="mb-1 flex items-center justify-between">
           <h1 className="text-2xl font-extrabold text-blue-600">BOOK MAP GRAPHIC VIEW</h1>
-          <div className="text-xs text-gray-500">
-            노드 {nodeCount}개 · 연결 {linkCount}개
-          </div>
+          <div className="text-xs text-gray-500">노드 {nodeCount}개 · 연결 {linkCount}개</div>
         </div>
 
         {/* 탭 */}
@@ -391,14 +354,9 @@ export default function BookMapPage() {
           {["전체", ...TYPES].map((t) => (
             <button
               key={t}
-              onClick={() => {
-                setTab(t);
-                setChip(null);
-              }}
+              onClick={() => { setTab(t); setChip(null); }}
               className={`rounded-full border px-3 py-1.5 text-sm transition ${
-                tab === t
-                  ? "bg-gray-900 text-white border-gray-900"
-                  : "text-gray-700 border-gray-300 hover:bg-gray-100"
+                tab === t ? "bg-gray-900 text-white border-gray-900" : "text-gray-700 border-gray-300 hover:bg-gray-100"
               }`}
             >
               {t}
@@ -406,15 +364,13 @@ export default function BookMapPage() {
           ))}
         </div>
 
-        {/* 칩(도서목록과 동일 UX) */}
+        {/* 칩 */}
         {TYPES.includes(tab) && (
           <div className="mb-3 flex flex-wrap gap-2">
             <button
               onClick={() => setChip(null)}
               className={`rounded-full border px-3 py-1.5 text-sm transition ${
-                chip == null
-                  ? "bg-blue-600 text-white border-blue-600"
-                  : "text-gray-700 border-gray-300 hover:bg-gray-100"
+                chip == null ? "bg-blue-600 text-white border-blue-600" : "text-gray-700 border-gray-300 hover:bg-gray-100"
               }`}
             >
               전체
@@ -424,9 +380,7 @@ export default function BookMapPage() {
                 key={v}
                 onClick={() => setChip(v === chip ? null : v)}
                 className={`rounded-full border px-3 py-1.5 text-sm transition ${
-                  chip === v
-                    ? "bg-blue-600 text-white border-blue-600"
-                    : "text-gray-700 border-gray-300 hover:bg-gray-100"
+                  chip === v ? "bg-blue-600 text-white border-blue-600" : "text-gray-700 border-gray-300 hover:bg-gray-100"
                 }`}
                 title={v}
               >
@@ -452,7 +406,7 @@ export default function BookMapPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-7">
-          {/* 좌측 고정 패널(도서목록과 동일 크기) */}
+          {/* 좌측 패널(도서목록과 동일 크기/역할) */}
           <aside className="hidden md:col-span-2 md:block">
             <div
               className="rounded-2xl border border-dashed border-gray-300 bg-white/60 p-4"
@@ -464,7 +418,7 @@ export default function BookMapPage() {
             </div>
           </aside>
 
-          {/* 우측 그래프 */}
+          {/* 그래프 */}
           <section className="md:col-span-5">
             <div
               ref={wrapRef}
@@ -481,30 +435,38 @@ export default function BookMapPage() {
                 <ForceGraph2D
                   key={graphKey}
                   ref={graphRef}
+                  nodeId="id"
                   width={width || undefined}
                   height={height || undefined}
                   graphData={{ nodes, links }}
-                  // 인터랙션 확실히 켜기
+                  // 인터랙션
                   enableZoomPanInteraction={true}
                   enableNodeDrag={true}
-                  // 포인터/툴팁
                   onNodeHover={handleHover}
                   onNodeClick={handleClick}
                   nodeCanvasObject={drawNode}
                   nodePointerAreaPaint={nodePointerAreaPaint}
-                  // 링크는 캔버스로 직접 그림(두께/점선 등)
-                  linkColor={() => "rgba(0,0,0,0)"}
+                  // 링크(스타일 커스텀)
+                  linkColor={() => "rgba(0,0,0,0)"}           // 기본 링크 숨김
                   linkCanvasObject={drawLink}
                   linkCanvasObjectMode={() => "after"}
-                  // d3 물리 시뮬레이션 설정 (부드럽게)
-                  cooldownTime={1500}
+                  // 엔진(부드럽고 확실히 멈추도록)
+                  warmupTicks={60}
+                  cooldownTicks={150}
                   d3VelocityDecay={0.3}
                   d3AlphaMin={0.001}
+                  // 엔진 멈춘 뒤 1회 zoomToFit
+                  onEngineStop={() => {
+                    if (graphRef.current && !didFitRef.current) {
+                      didFitRef.current = true;
+                      try { graphRef.current.zoomToFit(400, 40); } catch {}
+                    }
+                  }}
                   backgroundColor="rgba(255,255,255,0)"
                 />
               )}
 
-              {/* 미리보기 툴팁 */}
+              {/* 툴팁 */}
               {hover.node && (
                 <div
                   className="pointer-events-none absolute z-20 w-56 rounded-lg bg-gray-900/90 p-2 text-white shadow-lg"
@@ -516,13 +478,7 @@ export default function BookMapPage() {
                   <div className="flex gap-2">
                     <div className="h-16 w-12 overflow-hidden rounded bg-gray-700 shrink-0">
                       {hover.node.image ? (
-                        // Next/Image 대신 <img> (CORS/외부 도메인 이슈 회피)
-                        <img
-                          src={hover.node.image}
-                          alt=""
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                        />
+                        <img src={hover.node.image} alt="" className="h-full w-full object-cover" loading="lazy" />
                       ) : (
                         <div className="h-full w-full bg-gray-700" />
                       )}
@@ -547,9 +503,9 @@ export default function BookMapPage() {
   );
 }
 
-/* ----------------------------------------------------------------
+/* ─────────────────────────────────────────────────────────────
    범례
----------------------------------------------------------------- */
+   ───────────────────────────────────────────────────────────── */
 function LegendDots() {
   return (
     <div className="flex flex-wrap items-center gap-3">
