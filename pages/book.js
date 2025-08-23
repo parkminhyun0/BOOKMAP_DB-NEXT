@@ -9,7 +9,9 @@
 
 // pages/book.js
 import Link from "next/link";
-import LeftPanel from "@/components/LeftPanel";    // ← 추가: 좌측 패널 공용 컴포넌트
+import { useEffect, useMemo, useRef, useState } from "react";
+import Loader from "../components/Loader";        // ✅ FIX
+import LeftPanel from "../components/LeftPanel";  // (이미 있으면 생략)
 
 /* ─────────────────────────────────────────────────────────────
    🛠️ EDIT ME: 빠른 설정
