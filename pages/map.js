@@ -9,8 +9,7 @@
 // -----------------------------------------------------------------------------
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import dynamic from "next/dynamic";
-import LeftPanel from "@/components/LeftPanel"; // ← 이 줄 추가
+import { useRouter } from "next/router"; // ✅ FIX: prerender 시 useRouter 미정의 에러 해결
 
 /* ─────────────────────────────────────────────────────────────
    react-force-graph-2d 를 CSR(브라우저에서만) 로드
