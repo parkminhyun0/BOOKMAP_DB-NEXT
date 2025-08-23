@@ -27,8 +27,8 @@ const TITLE_MAX_PX = 16;
 const TITLE_MIN_PX = 12;
 const TITLE_PADDING_H = 12;
 
-// 테스트용 플레이스홀더(배포 시 false 권장)
-const ENABLE_TEST_PLACEHOLDERS = true;
+// 테스트용 플레이스홀더(배포 시 false 권장, 테스트 시 true)
+const ENABLE_TEST_PLACEHOLDERS = false;
 const TEST_PLACEHOLDER_COUNT = 30;
 
 // NEW BOOK 슬라이더
