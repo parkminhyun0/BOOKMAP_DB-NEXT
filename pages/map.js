@@ -9,29 +9,29 @@
 // -----------------------------------------------------------------------------
 
 // pages/map.js
+/* eslint-disable @next/next/no-img-element */ // <img> 경고가 거슬리면 유지, 싫으면 삭제
+
 import { useEffect, useMemo, useRef, useState } from "react";
-import dynamic from "next/dynamic";           // ★ 누락되어 빌드 실패 원인이었던 줄
-import { useRouter } from "next/router";      // (혹시 없으면 함께 추가)
+import dynamic from "next/dynamic";           // ★ 단 한 번만 있어야 합니다.
+import { useRouter } from "next/router";
+
+import LeftPanel from "@/components/LeftPanel"; // 좌측 패널을 쓰는 경우 유지
+import Loader from "@/components/Loader";       // Loader를 쓰는 경우 유지
 
 /* ─────────────────────────────────────────────────────────────
    react-force-graph-2d 를 CSR(브라우저에서만) 로드
    - Next.js의 SSR 단계에서 window 참조로 인한 에러를 방지합니다.
    - 로딩 동안 가운데 “그래프 초기화…” 텍스트가 보입니다.
 ────────────────────────────────────────────────────────────── */
-import dynamic from "next/dynamic";
-
-const ForceGraph2D =
-  typeof window === "undefined"
-    ? () => null
-    : dynamic(() => import("react-force-graph-2d"), {
-        ssr: false,
-        loading: () => (
-          <div className="absolute inset-0 flex items-center justify-center text-gray-500">
-            그래프 초기화…
-          </div>
-        ),
-      });
-
+// 2D Force Graph – SSR 비활성
+const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
+  ssr: false,
+  loading: () => (
+    <div className="absolute inset-0 flex items-center justify-center text-gray-500">
+      그래프 초기화…
+    </div>
+  ),
+});
 
 /* ─────────────────────────────────────────────────────────────
    🛠️ EDIT ME: 빠른 설정 (여기만 건드려도 대부분 해결됩니다)
