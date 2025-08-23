@@ -8,15 +8,12 @@
 //  5) [🧩 고급] 새 속성 타입 추가 방법   → 아래 “새 타입 추가 가이드” 주석 참고
 // -----------------------------------------------------------------------------
 
-// pages/map.js
-/* eslint-disable @next/next/no-img-element */ // <img> 경고가 거슬리면 유지, 싫으면 삭제
-
+/* eslint-disable @next/next/no-img-element */ // 선택: <img> 경고 숨기기
 import { useEffect, useMemo, useRef, useState } from "react";
-import dynamic from "next/dynamic";           // ★ 단 한 번만 있어야 합니다.
+import dynamic from "next/dynamic";
 import { useRouter } from "next/router";
-
-import LeftPanel from "@/components/LeftPanel"; // 좌측 패널을 쓰는 경우 유지
-import Loader from "@/components/Loader";       // Loader를 쓰는 경우 유지
+import LeftPanel from "@/components/LeftPanel"; // 좌측 패널 컴포넌트
+// import Loader from "@/components/Loader";    // ← 현재 미사용이므로 주석/삭제 (나중에 쓰면 되살리세요)
 
 /* ─────────────────────────────────────────────────────────────
    react-force-graph-2d 를 CSR(브라우저에서만) 로드
@@ -492,13 +489,13 @@ export default function BookMapPage() {
           {/* 좌측: 공용 컴포넌트 재사용(공지/NEW BOOK 슬라이드/이벤트) */}
 		<aside className="hidden md:col-span-2 md:block">
   			<LeftPanel
-   			 books={books}
-  			  stickyTop={STICKY_TOP}
-  			  stickyHeight={STICKY_HEIGHT}
-  			  slideAutoMs={2000}
-  			  itemsPerPage={2}
-  			  maxPages={5}
-  			/>
+  			books={books}
+ 			 stickyTop={CONFIG.STICKY_TOP}
+ 			 stickyHeight={CONFIG.STICKY_HEIGHT}
+ 			 slideAutoMs={2000}
+ 			 itemsPerPage={2}
+ 			 maxPages={5}
+			/>
 		</aside>
 
 
