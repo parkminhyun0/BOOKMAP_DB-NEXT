@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/router";
 
-// 2D Force Graph – SSR 비활성
+// 2D Force Graph — SSR 비활성
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
   ssr: false,
   loading: () => (
@@ -14,7 +14,7 @@ const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
 });
 
 /* ─────────────────────────────────────────────────────────────
-   옵션 (도서목록 좌측 패널과 동일 크기/역할을 가정)
+   옵션 (도서목록 좌측 패널과 동일 크기/역할 가정)
    ───────────────────────────────────────────────────────────── */
 const STICKY_TOP = 96;
 const STICKY_HEIGHT = 640;
@@ -36,20 +36,20 @@ const TYPE_DASH = {
   카테고리: [],
   단계: [],
   저자: [],
-  역자: [6, 6],      // 점선
+  역자: [6, 6],
   주제: [],
   장르: [],
-  구분: [4, 8],      // 점선
+  구분: [4, 8],
 };
 
 const TYPE_WIDTH = {
-  카테고리: 1.5,
-  단계: 1.5,
+  카테고리: 1.6,
+  단계: 1.6,
   저자: 2.2,
   역자: 2.0,
   주제: 2.0,
   장르: 2.0,
-  구분: 1.5,
+  구분: 1.6,
 };
 
 /* ─────────────────────────────────────────────────────────────
@@ -78,7 +78,7 @@ function splitList(input) {
     .filter(Boolean);
 }
 
-// 저자/역자는 절대 분리하지 않고 “전체 문자열”
+// 저자/역자는 “전체 문자열”
 const whole = (x) => (norm(x) ? [norm(x)] : []);
 
 function extractFacets(books) {
@@ -134,22 +134,22 @@ function useSize(ref) {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   페이지 컴포넌트
+   페이지
    ───────────────────────────────────────────────────────────── */
 export default function BookMapPage() {
   const router = useRouter();
   const [isClient, setIsClient] = useState(false);
 
-  // 데이터 로드
+  // 데이터
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
-  // 필터 탭 + 칩(도서목록과 동일 UX)
+  // 필터: 상단 탭 + 하위 칩
   const [tab, setTab] = useState("전체"); // "전체" 또는 TYPES 항목
-  const [chip, setChip] = useState(null); // 선택된 하위 값(없으면 null)
+  const [chip, setChip] = useState(null); // 하위 값
 
-  // 그래프/툴팁
+  // 그래프
   const graphRef = useRef(null);
   const wrapRef = useRef(null);
   const { width, height } = useSize(wrapRef);
@@ -181,12 +181,10 @@ export default function BookMapPage() {
   // 현재 탭의 칩 목록
   const chipList = useMemo(() => (TYPES.includes(tab) ? facets[tab] || [] : []), [tab, facets]);
 
-  // 탭/칩 기준으로 노드 필터링
+  // “칩이 선택되면” 노드 집합을 해당 값으로 필터. 칩이 없으면 전체 노드 사용.
   const filteredBooks = useMemo(() => {
-    if (tab === "전체" || !TYPES.includes(tab)) return books;
-    if (!chip) return books; // 탭만 선택 시 전체 노드 노출
+    if (!chip || !TYPES.includes(tab)) return books;
     const v = norm(chip).toLowerCase();
-
     return books.filter((b) => {
       switch (tab) {
         case "카테고리":
@@ -209,10 +207,12 @@ export default function BookMapPage() {
     });
   }, [books, tab, chip]);
 
-  // 그래프 노드
+  // 노드: 칩이 있으면 filteredBooks, 없으면 전체
+  const baseBooks = chip ? filteredBooks : books;
+
   const nodes = useMemo(
     () =>
-      filteredBooks.map((b) => ({
+      baseBooks.map((b) => ({
         id: b.id,
         title: b.title,
         author: b.author,
@@ -220,41 +220,31 @@ export default function BookMapPage() {
         image: b.image,
         raw: b,
       })),
-    [filteredBooks]
+    [baseBooks]
   );
 
-  // 그래프 링크(모든 관계 타입을 생성, 현재 필터와 무관하게 보여줌)
-  const links = useMemo(() => {
-    const id2book = new Map(books.map((b) => [String(b.id), b]));
+  // 링크: baseBooks 기준으로 모든 관계 계산 → 탭이 "전체"가 아니면 해당 타입만 표시
+  const linksAll = useMemo(() => {
     const arr = [];
-
-    const n = filteredBooks.length;
+    const n = baseBooks.length;
     for (let i = 0; i < n; i++) {
-      const A = filteredBooks[i];
+      const A = baseBooks[i];
       for (let j = i + 1; j < n; j++) {
-        const B = filteredBooks[j];
+        const B = baseBooks[j];
         const rels = [];
 
-        // 카테고리
         if (intersects(splitList(A.category), splitList(B.category))) rels.push("카테고리");
-        // 단계
         if (norm(A.level) && norm(A.level) === norm(B.level)) rels.push("단계");
-        // 저자(전체 문자열 일치)
         if (norm(A.author) && norm(A.author) === norm(B.author)) rels.push("저자");
-        // 역자(전체 문자열 일치)
         const aT = norm(A.translator ?? A["역자"]);
         const bT = norm(B.translator ?? B["역자"]);
         if (aT && aT === bT) rels.push("역자");
-        // 주제
         if (intersects(splitList(A.subject), splitList(B.subject))) rels.push("주제");
-        // 장르
         if (intersects(splitList(A.genre), splitList(B.genre))) rels.push("장르");
-        // 구분
         const aD = normalizeDivision(A.division);
         const bD = normalizeDivision(B.division);
         if (aD && aD === bD) rels.push("구분");
 
-        // 링크 생성(관계마다 1개씩)
         for (const t of rels) {
           arr.push({ source: String(A.id), target: String(B.id), type: t });
         }
@@ -267,7 +257,12 @@ export default function BookMapPage() {
       const set = new Set(a.map((x) => x.toLowerCase()));
       return b.some((x) => set.has(x.toLowerCase()));
     }
-  }, [filteredBooks, books]);
+  }, [baseBooks]);
+
+  const links = useMemo(
+    () => (TYPES.includes(tab) ? linksAll.filter((l) => l.type === tab) : linksAll),
+    [linksAll, tab]
+  );
 
   // 노드 색: 현재 탭 기준(전체면 회색)
   const nodeColor = useMemo(() => {
@@ -275,7 +270,7 @@ export default function BookMapPage() {
     return c;
   }, [tab]);
 
-  // 노드 렌더링(도트 + 텍스트)
+  // 캔버스 노드 렌더(도트 + 텍스트)
   const drawNode = (node, ctx, scale) => {
     const r = 4.5;
     ctx.beginPath();
@@ -283,18 +278,17 @@ export default function BookMapPage() {
     ctx.arc(node.x, node.y, r, 0, 2 * Math.PI, false);
     ctx.fill();
 
-    // 제목
     const label = node.title || "";
-    ctx.font = `${Math.max(10, 12 / (scale ** 0.15))}px ui-sans-serif, -apple-system, BlinkMacSystemFont`;
+    ctx.font = `${Math.max(10, 12 / Math.pow(scale, 0.15))}px ui-sans-serif, -apple-system, BlinkMacSystemFont`;
     ctx.textBaseline = "top";
-    ctx.fillStyle = "#374151"; // gray-700
+    ctx.fillStyle = "#374151";
     ctx.fillText(label, node.x + 8, node.y + 6);
   };
 
-  // 링크는 캔버스로 직접 그려서 점선/두께 반영
+  // 링크(점선/두께 반영)
   const drawLink = (link, ctx) => {
     const color = TYPE_COLOR[link.type] || "#9ca3af";
-    const width = TYPE_WIDTH[link.type] || 1.5;
+    const width = TYPE_WIDTH[link.type] || 1.6;
     const dash = TYPE_DASH[link.type] || [];
 
     const sx = link.source.x;
@@ -313,7 +307,7 @@ export default function BookMapPage() {
     ctx.restore();
   };
 
-  // 호버 핸들러(툴팁 좌표 변환)
+  // 호버 → 사용자 정의 툴팁(이미지 포함)
   const handleHover = (node) => {
     if (!isClient || !node || !graphRef.current) {
       setHover({ node: null, x: 0, y: 0 });
@@ -328,14 +322,20 @@ export default function BookMapPage() {
     router.push(`/book/${node.id}`);
   };
 
-  const total = nodes.length;
+  const totalNodes = nodes.length;
+  const totalLinks = links.length;
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        <h1 className="mb-4 text-2xl font-extrabold text-blue-600">BOOK MAP GRAPHIC VIEW</h1>
+        <div className="mb-4 flex items-end justify-between">
+          <h1 className="text-2xl font-extrabold text-blue-600">BOOK MAP GRAPHIC VIEW</h1>
+          <div className="text-xs text-gray-500">
+            노드 {totalNodes}개 · 연결 {totalLinks}개
+          </div>
+        </div>
 
-        {/* 탭 */}
+        {/* 상단 탭 */}
         <div className="mb-2 flex flex-wrap gap-2">
           {["전체", ...TYPES].map((t) => (
             <button
@@ -355,7 +355,7 @@ export default function BookMapPage() {
           ))}
         </div>
 
-        {/* 칩(도서목록과 동일 UX) */}
+        {/* 하위 칩(도서목록과 동일 UX) */}
         {TYPES.includes(tab) && (
           <div className="mb-3 flex flex-wrap gap-2">
             <button
@@ -401,7 +401,7 @@ export default function BookMapPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-7">
-          {/* 좌측: 도서목록과 동일 크기의 고정 영역 */}
+          {/* 좌측: 고정 패널(도서목록과 동일 크기) */}
           <aside className="hidden md:col-span-2 md:block">
             <div
               className="rounded-2xl border border-dashed border-gray-300 bg-white/60 p-4"
@@ -432,34 +432,58 @@ export default function BookMapPage() {
                   width={width}
                   height={height}
                   graphData={{ nodes, links }}
-                  nodeLabel="title"
+                  // 기본 툴팁(브라우저 title) 비활성화 → 사용자 정의 툴팁만 사용
+                  nodeLabel={() => ""}
                   nodeCanvasObject={drawNode}
-                  // 기본 링크는 숨기고 캔버스로 직접 그림(점선/두께 반영)
-                  linkColor={() => "rgba(0,0,0,0)"}
+                  linkColor={() => "rgba(0,0,0,0)"}   // 기본 SVG 링크 숨김
                   linkCanvasObject={drawLink}
                   linkCanvasObjectMode={() => "after"}
                   onNodeHover={handleHover}
                   onNodeClick={handleClick}
-                  cooldownTicks={120}
+                  // 인터랙션 확실히 ON
+                  enableZoomInteraction={true}
+                  enablePanInteraction={true}
+                  enableNodeDrag={true}
+                  // 레이아웃 튜닝
+                  backgroundColor="#ffffff"
+                  cooldownTicks={90}
                 />
               )}
 
-              {/* 툴팁 */}
+              {/* 사용자 정의 툴팁 */}
               {hover.node && (
                 <div
-                  className="pointer-events-none absolute z-20 min-w-[160px] max-w-[240px] rounded-lg bg-gray-900/90 px-3 py-2 text-xs text-white shadow-lg"
+                  className="pointer-events-none absolute z-20 min-w-[180px] max-w-[260px] rounded-xl bg-gray-900/90 p-3 text-xs text-white shadow-2xl"
                   style={{
-                    left: Math.max(8, Math.min((hover.x || 0) + 10, (width || 300) - 170)),
-                    top: Math.max(8, Math.min((hover.y || 0) - 10, (height || 200) - 80)),
+                    left: Math.max(8, Math.min((hover.x || 0) + 12, (width || 300) - 220)),
+                    top: Math.max(8, Math.min((hover.y || 0) + 12, (height || 200) - 140)),
                   }}
                 >
-                  <div className="font-semibold">{hover.node.title}</div>
-                  {hover.node.author && <div className="mt-0.5 opacity-90">{hover.node.author}</div>}
+                  <div className="flex gap-3">
+                    <div className="h-16 w-12 overflow-hidden rounded bg-gray-800/40">
+                      {hover.node.image ? (
+                        <img
+                          src={hover.node.image}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="h-full w-full bg-gray-700/60" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold">{hover.node.title}</div>
+                      {hover.node.author && (
+                        <div className="mt-0.5 truncate opacity-90">{hover.node.author}</div>
+                      )}
+                      {hover.node.publisher && (
+                        <div className="mt-0.5 truncate opacity-70">{hover.node.publisher}</div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
-
-            <p className="mt-3 text-xs text-gray-500">노드 수: {total}개</p>
           </section>
         </div>
       </div>
@@ -468,7 +492,7 @@ export default function BookMapPage() {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   범례 컴포넌트
+   범례
    ───────────────────────────────────────────────────────────── */
 function LegendDots() {
   return (
