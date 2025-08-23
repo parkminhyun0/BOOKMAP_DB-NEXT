@@ -18,7 +18,7 @@ import { useEffect, useMemo, useState } from "react";
    - 슬라이드 속도/카드 폭/레이아웃 모드만 바꿔도 대부분 해결됩니다.
 ────────────────────────────────────────────────────────────── */
 const DEFAULTS = {
-  slideAutoMs: 3500,   // ⏱️ 슬라이드 자동 전환 간격(ms). 느리게=값↑, 빠르게=값↓
+  slideAutoMs: 7000,   // ⏱️ 슬라이드 자동 전환 간격(ms). 느리게=값↑, 빠르게=값↓
   cardWidth: 180,      // 🖼️ NEW BOOK 1권 카드의 가로(px). 160~200 권장
   mode: "single",      // 📚 "single" = 한 권, "multi" = 여러 권( itemsPerPage 사용 )
   maxPages: 10,        // 🔢 최대 몇 페이지까지 보여줄지(최신순)
@@ -124,8 +124,8 @@ export default function LeftPanel({
             길면 자연스럽게 늘어납니다. 너무 길면 max-h-64 + overflow-auto 를 추가하세요. */}
         <div className="rounded-lg bg-gray-50 p-3 text-sm leading-6 text-gray-700">
           <ul className="list-disc pl-4">
-            <li>BookMap 오픈 베타를 시작했습니다.</li>
-            <li>도서 자동 채움(ISBN) 개선 작업 진행 중입니다.</li>
+            <li>BookMap 오픈 베타서비스 시작</li>
+            <li>도서 자동 채움 개선 작업중.</li>
             <li>문의: bookmapwep@gmail.com</li>
           </ul>
         </div>
@@ -180,7 +180,7 @@ export default function LeftPanel({
 
           {/* ✍️ 속도 조절 팁:
               위 DEFAULTS.slideAutoMs 값을 바꾸거나,
-              <LeftPanel slideAutoMs={4000} /> 처럼 prop으로 넘겨도 됩니다. */}
+              <LeftPanel slideAutoMs={7000} /> 처럼 prop으로 넘겨도 됩니다. */}
         </div>
       </section>
 
@@ -191,17 +191,11 @@ export default function LeftPanel({
         {/* 🛠️ EDIT ME: 이벤트 내용도 이 HTML만 편집하세요.
             길면 자연스레 늘어나며, 너무 길면 max-h-64 + overflow-auto 추가 */}
         <div className="rounded-lg bg-indigo-50 p-3 text-sm leading-6 text-gray-700">
-          <p className="font-medium">📣 도서등록 이벤트</p>
+          <p className="font-medium">도서등록 이벤트</p>
           <p className="text-gray-600">책 지도를 위해 도서를 등록해주세요.</p>
           <ul className="mt-2 list-disc pl-4 text-gray-600">
             <li>기간: 상시</li>
             <li>대상: BookMap 이용자</li>
-            <li>
-              참여:{" "}
-              <Link href="/event" className="underline">
-                이벤트 페이지
-              </Link>
-            </li>
           </ul>
         </div>
       </section>
