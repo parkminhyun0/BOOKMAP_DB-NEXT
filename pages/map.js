@@ -3,7 +3,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/router";
 
-// 2D Force Graph — SSR 비활성
+/* ----------------------------------------------------------------
+   2D ForceGraph (SSR 비활성) + 로딩 플레이스홀더
+---------------------------------------------------------------- */
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
   ssr: false,
   loading: () => (
@@ -13,23 +15,22 @@ const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
   ),
 });
 
-/* ─────────────────────────────────────────────────────────────
-   옵션 (도서목록 좌측 패널과 동일 크기/역할 가정)
-   ───────────────────────────────────────────────────────────── */
+/* ----------------------------------------------------------------
+   상수/스타일 매핑
+---------------------------------------------------------------- */
 const STICKY_TOP = 96;
 const STICKY_HEIGHT = 640;
 
-// 관계 타입 목록과 색/스타일 매핑
 const TYPES = ["카테고리", "단계", "저자", "역자", "주제", "장르", "구분"];
 
 const TYPE_COLOR = {
-  카테고리: "#a855f7", // violet-500
-  단계: "#f59e0b",     // amber-500
-  저자: "#10b981",     // emerald-500
-  역자: "#06b6d4",     // sky-500
-  주제: "#ef4444",     // red-500
-  장르: "#3b82f6",     // blue-500
-  구분: "#9ca3af",     // gray-400
+  카테고리: "#a855f7",
+  단계: "#f59e0b",
+  저자: "#10b981",
+  역자: "#06b6d4",
+  주제: "#ef4444",
+  장르: "#3b82f6",
+  구분: "#9ca3af",
 };
 
 const TYPE_DASH = {
@@ -43,18 +44,18 @@ const TYPE_DASH = {
 };
 
 const TYPE_WIDTH = {
-  카테고리: 1.6,
-  단계: 1.6,
+  카테고리: 1.5,
+  단계: 1.5,
   저자: 2.2,
   역자: 2.0,
   주제: 2.0,
   장르: 2.0,
-  구분: 1.6,
+  구분: 1.5,
 };
 
-/* ─────────────────────────────────────────────────────────────
+/* ----------------------------------------------------------------
    유틸
-   ───────────────────────────────────────────────────────────── */
+---------------------------------------------------------------- */
 const norm = (v) => String(v ?? "").trim();
 
 function normalizeDivision(v) {
@@ -67,7 +68,6 @@ function normalizeDivision(v) {
   return s;
 }
 
-// 쉼표/구분자 분리(공백은 분리자 X)
 function splitList(input) {
   if (!input) return [];
   let s = String(input);
@@ -78,9 +78,9 @@ function splitList(input) {
     .filter(Boolean);
 }
 
-// 저자/역자는 “전체 문자열”
 const whole = (x) => (norm(x) ? [norm(x)] : []);
 
+/* facet 목록 수집 (칩 표시용) */
 function extractFacets(books) {
   const setCategory = new Set();
   const setAuthor = new Set();
@@ -101,7 +101,7 @@ function extractFacets(books) {
     const lvl = norm(b.level);
     if (lvl) setLevel.add(lvl);
   }
-  const sort = (arr) => [...arr].sort((a, b) => a.localeCompare(b, "ko"));
+  const sort = (set) => [...set].sort((a, b) => a.localeCompare(b, "ko"));
 
   return {
     카테고리: sort(setCategory),
@@ -114,18 +114,14 @@ function extractFacets(books) {
   };
 }
 
-/* ─────────────────────────────────────────────────────────────
-   사이즈 측정 훅
-   ───────────────────────────────────────────────────────────── */
+/* 컨테이너 실측 */
 function useSize(ref) {
   const [size, setSize] = useState({ width: 0, height: 0 });
   useEffect(() => {
     if (!ref.current) return;
-    const ro = new ResizeObserver((entries) => {
-      for (const e of entries) {
-        const cr = e.contentRect;
-        setSize({ width: Math.round(cr.width), height: Math.round(cr.height) });
-      }
+    const ro = new ResizeObserver(([e]) => {
+      const cr = e.contentRect;
+      setSize({ width: Math.round(cr.width), height: Math.round(cr.height) });
     });
     ro.observe(ref.current);
     return () => ro.disconnect();
@@ -133,30 +129,34 @@ function useSize(ref) {
   return size;
 }
 
-/* ─────────────────────────────────────────────────────────────
-   페이지
-   ───────────────────────────────────────────────────────────── */
+/* ----------------------------------------------------------------
+   본문
+---------------------------------------------------------------- */
 export default function BookMapPage() {
   const router = useRouter();
-  const [isClient, setIsClient] = useState(false);
 
   // 데이터
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
-  // 필터: 상단 탭 + 하위 칩
-  const [tab, setTab] = useState("전체"); // "전체" 또는 TYPES 항목
+  // 필터 탭/칩
+  const [tab, setTab] = useState("전체"); // "전체" 또는 TYPES
   const [chip, setChip] = useState(null); // 하위 값
 
   // 그래프
-  const graphRef = useRef(null);
   const wrapRef = useRef(null);
   const { width, height } = useSize(wrapRef);
+  const graphRef = useRef(null);
+
+  // 호버/툴팁
   const [hover, setHover] = useState({ node: null, x: 0, y: 0 });
 
+  // 마운트 이후에만 그래프 렌더(SSR 회피)
+  const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
+  /* 데이터 로드 */
   useEffect(() => {
     setErr("");
     setLoading(true);
@@ -176,15 +176,16 @@ export default function BookMapPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  /* facet 목록(칩) */
   const facets = useMemo(() => extractFacets(books), [books]);
-
-  // 현재 탭의 칩 목록
   const chipList = useMemo(() => (TYPES.includes(tab) ? facets[tab] || [] : []), [tab, facets]);
 
-  // “칩이 선택되면” 노드 집합을 해당 값으로 필터. 칩이 없으면 전체 노드 사용.
+  /* 노드 필터(탭/칩) */
   const filteredBooks = useMemo(() => {
-    if (!chip || !TYPES.includes(tab)) return books;
+    if (tab === "전체" || !TYPES.includes(tab)) return books;
+    if (!chip) return books; // 탭만 고른 경우: 노드는 전체 노출(대신 링크만 타입별 필터)
     const v = norm(chip).toLowerCase();
+
     return books.filter((b) => {
       switch (tab) {
         case "카테고리":
@@ -207,12 +208,10 @@ export default function BookMapPage() {
     });
   }, [books, tab, chip]);
 
-  // 노드: 칩이 있으면 filteredBooks, 없으면 전체
-  const baseBooks = chip ? filteredBooks : books;
-
+  /* 노드 생성 */
   const nodes = useMemo(
     () =>
-      baseBooks.map((b) => ({
+      filteredBooks.map((b) => ({
         id: b.id,
         title: b.title,
         author: b.author,
@@ -220,94 +219,136 @@ export default function BookMapPage() {
         image: b.image,
         raw: b,
       })),
-    [baseBooks]
+    [filteredBooks]
   );
 
-  // 링크: baseBooks 기준으로 모든 관계 계산 → 탭이 "전체"가 아니면 해당 타입만 표시
-  const linksAll = useMemo(() => {
+  /* 링크 생성
+     - 기본: filteredBooks 간 모든 관계 계산
+     - 탭이 TYPES 중 하나인 경우:
+       - chip이 비어있으면: "해당 타입" 링크만 표시
+       - chip이 있으면: "해당 타입 + 해당 값"에 해당하는 링크만 표시
+  */
+  const links = useMemo(() => {
     const arr = [];
-    const n = baseBooks.length;
-    for (let i = 0; i < n; i++) {
-      const A = baseBooks[i];
-      for (let j = i + 1; j < n; j++) {
-        const B = baseBooks[j];
-        const rels = [];
+    const n = filteredBooks.length;
 
-        if (intersects(splitList(A.category), splitList(B.category))) rels.push("카테고리");
-        if (norm(A.level) && norm(A.level) === norm(B.level)) rels.push("단계");
-        if (norm(A.author) && norm(A.author) === norm(B.author)) rels.push("저자");
+    // 현재 탭/칩 컨텍스트
+    const onlyType = TYPES.includes(tab) ? tab : null;
+    const onlyValue = onlyType && chip ? norm(chip) : null;
+
+    const push = (A, B, type, sameValue) => {
+      // 타입 필터
+      if (onlyType && type !== onlyType) return;
+      // 값 필터(칩)
+      if (onlyValue && !sameValue) return;
+      arr.push({ source: String(A.id), target: String(B.id), type });
+    };
+
+    for (let i = 0; i < n; i++) {
+      const A = filteredBooks[i];
+      for (let j = i + 1; j < n; j++) {
+        const B = filteredBooks[j];
+
+        // 카테고리
+        const Ac = splitList(A.category);
+        const Bc = splitList(B.category);
+        const cat = intersectsValue(Ac, Bc);
+        if (cat) push(A, B, "카테고리", cat);
+
+        // 단계
+        if (norm(A.level) && norm(A.level) === norm(B.level)) push(A, B, "단계", norm(A.level));
+
+        // 저자
+        if (norm(A.author) && norm(A.author) === norm(B.author)) push(A, B, "저자", norm(A.author));
+
+        // 역자
         const aT = norm(A.translator ?? A["역자"]);
         const bT = norm(B.translator ?? B["역자"]);
-        if (aT && aT === bT) rels.push("역자");
-        if (intersects(splitList(A.subject), splitList(B.subject))) rels.push("주제");
-        if (intersects(splitList(A.genre), splitList(B.genre))) rels.push("장르");
+        if (aT && aT === bT) push(A, B, "역자", aT);
+
+        // 주제
+        const As = splitList(A.subject);
+        const Bs = splitList(B.subject);
+        const sub = intersectsValue(As, Bs);
+        if (sub) push(A, B, "주제", sub);
+
+        // 장르
+        const Ag = splitList(A.genre);
+        const Bg = splitList(B.genre);
+        const gen = intersectsValue(Ag, Bg);
+        if (gen) push(A, B, "장르", gen);
+
+        // 구분
         const aD = normalizeDivision(A.division);
         const bD = normalizeDivision(B.division);
-        if (aD && aD === bD) rels.push("구분");
-
-        for (const t of rels) {
-          arr.push({ source: String(A.id), target: String(B.id), type: t });
-        }
+        if (aD && aD === bD) push(A, B, "구분", aD);
       }
     }
     return arr;
 
-    function intersects(a, b) {
-      if (!a.length || !b.length) return false;
+    function intersectsValue(a, b) {
+      if (!a.length || !b.length) return null;
       const set = new Set(a.map((x) => x.toLowerCase()));
-      return b.some((x) => set.has(x.toLowerCase()));
+      for (const x of b) {
+        if (set.has(x.toLowerCase())) return x; // 공통값 하나 반환
+      }
+      return null;
     }
-  }, [baseBooks]);
+  }, [filteredBooks, tab, chip]);
 
-  const links = useMemo(
-    () => (TYPES.includes(tab) ? linksAll.filter((l) => l.type === tab) : linksAll),
-    [linksAll, tab]
+  /* 카운트 */
+  const nodeCount = nodes.length;
+  const linkCount = links.length;
+
+  /* 노드 색상: 탭에 따라 도트 색 바뀜(전체일 땐 회색) */
+  const nodeColor = useMemo(
+    () => (TYPES.includes(tab) ? TYPE_COLOR[tab] : "#6b7280"),
+    [tab]
   );
 
-  // 노드 색: 현재 탭 기준(전체면 회색)
-  const nodeColor = useMemo(() => {
-    const c = TYPES.includes(tab) ? TYPE_COLOR[tab] : "#6b7280"; // gray-500
-    return c;
-  }, [tab]);
-
-  // 캔버스 노드 렌더(도트 + 텍스트)
+  /* 캔버스 렌더러: 노드 */
   const drawNode = (node, ctx, scale) => {
-    const r = 4.5;
+    const r = 4.8;
     ctx.beginPath();
     ctx.fillStyle = nodeColor;
     ctx.arc(node.x, node.y, r, 0, 2 * Math.PI, false);
     ctx.fill();
 
+    // 레이블
     const label = node.title || "";
-    ctx.font = `${Math.max(10, 12 / Math.pow(scale, 0.15))}px ui-sans-serif, -apple-system, BlinkMacSystemFont`;
+    ctx.font = `${Math.max(10, 12 / Math.pow(scale, 0.15))}px ui-sans-serif,-apple-system,BlinkMacSystemFont`;
     ctx.textBaseline = "top";
     ctx.fillStyle = "#374151";
     ctx.fillText(label, node.x + 8, node.y + 6);
   };
 
-  // 링크(점선/두께 반영)
+  /* 포인터 히트영역(드래그/호버 안정성 ↑) */
+  const nodePointerAreaPaint = (node, color, ctx) => {
+    const r = 8;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, r, 0, 2 * Math.PI, false);
+    ctx.fill();
+  };
+
+  /* 링크(점선/두께 반영) */
   const drawLink = (link, ctx) => {
     const color = TYPE_COLOR[link.type] || "#9ca3af";
-    const width = TYPE_WIDTH[link.type] || 1.6;
+    const width = TYPE_WIDTH[link.type] || 1.5;
     const dash = TYPE_DASH[link.type] || [];
-
-    const sx = link.source.x;
-    const sy = link.source.y;
-    const tx = link.target.x;
-    const ty = link.target.y;
 
     ctx.save();
     ctx.strokeStyle = color;
     ctx.lineWidth = width;
     if (dash.length) ctx.setLineDash(dash);
     ctx.beginPath();
-    ctx.moveTo(sx, sy);
-    ctx.lineTo(tx, ty);
+    ctx.moveTo(link.source.x, link.source.y);
+    ctx.lineTo(link.target.x, link.target.y);
     ctx.stroke();
     ctx.restore();
   };
 
-  // 호버 → 사용자 정의 툴팁(이미지 포함)
+  /* 호버 → 컨테이너 상대 좌표로 툴팁 표시 */
   const handleHover = (node) => {
     if (!isClient || !node || !graphRef.current) {
       setHover({ node: null, x: 0, y: 0 });
@@ -318,24 +359,34 @@ export default function BookMapPage() {
   };
 
   const handleClick = (node) => {
-    if (!node?.id) return;
-    router.push(`/book/${node.id}`);
+    if (node?.id) router.push(`/book/${node.id}`);
   };
 
-  const totalNodes = nodes.length;
-  const totalLinks = links.length;
+  /* 데이터 바뀔 때마다 보기 좋게 zoom-to-fit */
+  useEffect(() => {
+    if (!graphRef.current || !width || !height) return;
+    const t = setTimeout(() => {
+      try {
+        graphRef.current.zoomToFit(400, 40);
+      } catch {}
+    }, 200);
+    return () => clearTimeout(t);
+  }, [width, height, nodeCount, linkCount, tab, chip]);
+
+  /* 강제 리마운트 키 (시뮬/브러시 재초기화) */
+  const graphKey = `${tab}|${chip ?? "ALL"}|${nodeCount}|${linkCount}`;
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        <div className="mb-4 flex items-end justify-between">
+        <div className="mb-1 flex items-center justify-between">
           <h1 className="text-2xl font-extrabold text-blue-600">BOOK MAP GRAPHIC VIEW</h1>
           <div className="text-xs text-gray-500">
-            노드 {totalNodes}개 · 연결 {totalLinks}개
+            노드 {nodeCount}개 · 연결 {linkCount}개
           </div>
         </div>
 
-        {/* 상단 탭 */}
+        {/* 탭 */}
         <div className="mb-2 flex flex-wrap gap-2">
           {["전체", ...TYPES].map((t) => (
             <button
@@ -355,7 +406,7 @@ export default function BookMapPage() {
           ))}
         </div>
 
-        {/* 하위 칩(도서목록과 동일 UX) */}
+        {/* 칩(도서목록과 동일 UX) */}
         {TYPES.includes(tab) && (
           <div className="mb-3 flex flex-wrap gap-2">
             <button
@@ -401,7 +452,7 @@ export default function BookMapPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-7">
-          {/* 좌측: 고정 패널(도서목록과 동일 크기) */}
+          {/* 좌측 고정 패널(도서목록과 동일 크기) */}
           <aside className="hidden md:col-span-2 md:block">
             <div
               className="rounded-2xl border border-dashed border-gray-300 bg-white/60 p-4"
@@ -413,7 +464,7 @@ export default function BookMapPage() {
             </div>
           </aside>
 
-          {/* 우측: 그래프 */}
+          {/* 우측 그래프 */}
           <section className="md:col-span-5">
             <div
               ref={wrapRef}
@@ -428,56 +479,61 @@ export default function BookMapPage() {
 
               {isClient && !loading && (
                 <ForceGraph2D
+                  key={graphKey}
                   ref={graphRef}
-                  width={width}
-                  height={height}
+                  width={width || undefined}
+                  height={height || undefined}
                   graphData={{ nodes, links }}
-                  // 기본 툴팁(브라우저 title) 비활성화 → 사용자 정의 툴팁만 사용
-                  nodeLabel={() => ""}
-                  nodeCanvasObject={drawNode}
-                  linkColor={() => "rgba(0,0,0,0)"}   // 기본 SVG 링크 숨김
-                  linkCanvasObject={drawLink}
-                  linkCanvasObjectMode={() => "after"}
+                  // 인터랙션 확실히 켜기
+                  enableZoomPanInteraction={true}
+                  enableNodeDrag={true}
+                  // 포인터/툴팁
                   onNodeHover={handleHover}
                   onNodeClick={handleClick}
-                  // 인터랙션 확실히 ON
-                  enableZoomInteraction={true}
-                  enablePanInteraction={true}
-                  enableNodeDrag={true}
-                  // 레이아웃 튜닝
-                  backgroundColor="#ffffff"
-                  cooldownTicks={90}
+                  nodeCanvasObject={drawNode}
+                  nodePointerAreaPaint={nodePointerAreaPaint}
+                  // 링크는 캔버스로 직접 그림(두께/점선 등)
+                  linkColor={() => "rgba(0,0,0,0)"}
+                  linkCanvasObject={drawLink}
+                  linkCanvasObjectMode={() => "after"}
+                  // d3 물리 시뮬레이션 설정 (부드럽게)
+                  cooldownTime={1500}
+                  d3VelocityDecay={0.3}
+                  d3AlphaMin={0.001}
+                  backgroundColor="rgba(255,255,255,0)"
                 />
               )}
 
-              {/* 사용자 정의 툴팁 */}
+              {/* 미리보기 툴팁 */}
               {hover.node && (
                 <div
-                  className="pointer-events-none absolute z-20 min-w-[180px] max-w-[260px] rounded-xl bg-gray-900/90 p-3 text-xs text-white shadow-2xl"
+                  className="pointer-events-none absolute z-20 w-56 rounded-lg bg-gray-900/90 p-2 text-white shadow-lg"
                   style={{
-                    left: Math.max(8, Math.min((hover.x || 0) + 12, (width || 300) - 220)),
-                    top: Math.max(8, Math.min((hover.y || 0) + 12, (height || 200) - 140)),
+                    left: Math.max(8, Math.min((hover.x || 0) + 12, (width || 320) - 240)),
+                    top: Math.max(8, Math.min((hover.y || 0) - 8, (height || 200) - 140)),
                   }}
                 >
-                  <div className="flex gap-3">
-                    <div className="h-16 w-12 overflow-hidden rounded bg-gray-800/40">
+                  <div className="flex gap-2">
+                    <div className="h-16 w-12 overflow-hidden rounded bg-gray-700 shrink-0">
                       {hover.node.image ? (
+                        // Next/Image 대신 <img> (CORS/외부 도메인 이슈 회피)
                         <img
                           src={hover.node.image}
                           alt=""
                           className="h-full w-full object-cover"
+                          loading="lazy"
                         />
                       ) : (
-                        <div className="h-full w-full bg-gray-700/60" />
+                        <div className="h-full w-full bg-gray-700" />
                       )}
                     </div>
                     <div className="min-w-0">
                       <div className="truncate font-semibold">{hover.node.title}</div>
                       {hover.node.author && (
-                        <div className="mt-0.5 truncate opacity-90">{hover.node.author}</div>
+                        <div className="mt-0.5 truncate text-xs opacity-90">{hover.node.author}</div>
                       )}
                       {hover.node.publisher && (
-                        <div className="mt-0.5 truncate opacity-70">{hover.node.publisher}</div>
+                        <div className="truncate text-[11px] opacity-70">{hover.node.publisher}</div>
                       )}
                     </div>
                   </div>
@@ -491,18 +547,15 @@ export default function BookMapPage() {
   );
 }
 
-/* ─────────────────────────────────────────────────────────────
+/* ----------------------------------------------------------------
    범례
-   ───────────────────────────────────────────────────────────── */
+---------------------------------------------------------------- */
 function LegendDots() {
   return (
     <div className="flex flex-wrap items-center gap-3">
       {TYPES.map((t) => (
         <span key={t} className="inline-flex items-center gap-2">
-          <span
-            className="inline-block h-2.5 w-2.5 rounded-full"
-            style={{ background: TYPE_COLOR[t] }}
-          />
+          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: TYPE_COLOR[t] }} />
           <span className="text-gray-700">{t}</span>
         </span>
       ))}
