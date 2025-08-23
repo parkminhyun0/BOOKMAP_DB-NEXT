@@ -7,10 +7,9 @@
 //  4) [🛠️ EDIT ME: 필터 탭/칩] → 탭 순서와 표시값 제어
 // -----------------------------------------------------------------------------
 
+// pages/book.js
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-import Loader from "@/components/Loader";
-import LeftPanel from "@/components/LeftPanel"; // ← 이 줄만 추가
+import LeftPanel from "@/components/LeftPanel";    // ← 추가: 좌측 패널 공용 컴포넌트
 
 /* ─────────────────────────────────────────────────────────────
    🛠️ EDIT ME: 빠른 설정
