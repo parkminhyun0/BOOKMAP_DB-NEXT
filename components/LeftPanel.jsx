@@ -19,7 +19,7 @@ import { useEffect, useMemo, useState } from "react";
 ────────────────────────────────────────────────────────────── */
 const DEFAULTS = {
   periodDays: 7,     // 최신 N일(요청사항: 최근 7일)
-  cardWidth: 220,    // NEW BOOK 1권 카드 폭(px). 200~240 권장
+  cardWidth: 200,    // NEW BOOK 1권 카드 폭(px). 200~240 권장
   showArrows: true,  // ◀/▶ 버튼 표시
   loop: true,        // 마지막→처음, 처음→마지막으로 순환
   stickyTop: 96,     // 좌측 패널의 상단 고정 위치(px)
@@ -244,17 +244,10 @@ export default function LeftPanel({
         {/* 🛠️ EDIT ME: 이벤트 내용도 이 HTML만 편집하세요.
             길면 자연스레 늘어나며, 너무 길면 max-h-64 + overflow-auto 추가 */}
         <div className="rounded-lg bg-indigo-50 p-3 text-sm leading-6 text-gray-700">
-          <p className="font-medium">📣 도서등록 이벤트</p>
           <p className="text-gray-600">책 지도를 위한 도서 등록에 참여해주세요.</p>
           <ul className="mt-2 list-disc pl-4 text-gray-600">
             <li>기간: 상시</li>
             <li>대상: BookMap 회원</li>
-            <li>
-              참여:{" "}
-              <Link href="/event" className="underline">
-                이벤트 페이지
-              </Link>
-            </li>
           </ul>
         </div>
       </section>
