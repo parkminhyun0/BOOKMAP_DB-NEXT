@@ -10,7 +10,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/router";
+import LeftPanel from "@/components/LeftPanel"; // ← 이 줄 추가
 
 /* ─────────────────────────────────────────────────────────────
    react-force-graph-2d 를 CSR(브라우저에서만) 로드
@@ -482,17 +482,18 @@ export default function BookMapPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-7">
-          {/* 좌측 고정 패널(도서목록과 크기/역할 동일) */}
-          <aside className="hidden md:col-span-2 md:block">
-            <div
-              className="rounded-2xl border border-dashed border-gray-300 bg-white/60 p-4"
-              style={{ position: "sticky", top: CONFIG.STICKY_TOP, height: CONFIG.STICKY_HEIGHT }}
-            >
-              <div className="flex h-full items-center justify-center text-sm text-gray-400">
-                좌측 영역(추후 컨텐츠)
-              </div>
-            </div>
-          </aside>
+          {/* 좌측: 공용 컴포넌트 재사용(공지/NEW BOOK 슬라이드/이벤트) */}
+		<aside className="hidden md:col-span-2 md:block">
+  			<LeftPanel
+   			 books={books}
+  			  stickyTop={STICKY_TOP}
+  			  stickyHeight={STICKY_HEIGHT}
+  			  slideAutoMs={2000}
+  			  itemsPerPage={2}
+  			  maxPages={5}
+  			/>
+		</aside>
+
 
           {/* 그래프 영역 */}
           <section className="md:col-span-5">

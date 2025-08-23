@@ -10,6 +10,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Loader from "@/components/Loader";
+import LeftPanel from "@/components/LeftPanel"; // ← 이 줄만 추가
 
 /* ─────────────────────────────────────────────────────────────
    🛠️ EDIT ME: 빠른 설정
@@ -159,114 +160,6 @@ function MiniBookCard({ book }) {
   );
 }
 
-/* ─────────────────────────────────────────────────────────────
-   좌측 패널 - 공지/NEW BOOK 슬라이드/이벤트 (세로 3단)
-   - 스크린샷과 같은 배열
-   - NEW BOOK: 2초 간격 자동 슬라이드, 하단 도트 클릭 가능
-────────────────────────────────────────────────────────────── */
-function LeftPanel({ books }) {
-  // 최신 도서를 추려 슬라이드 페이지 구성
-  const latest = useMemo(() => sortBooks(books).slice(0, SLIDE_ITEMS_PER_PAGE * SLIDE_MAX_PAGES), [books]);
-
-  // 페이지로 나누기 (한 페이지 당 SLIDE_ITEMS_PER_PAGE 권)
-  const pages = useMemo(() => {
-    const arr = [];
-    for (let i = 0; i < latest.length; i += SLIDE_ITEMS_PER_PAGE) {
-      arr.push(latest.slice(i, i + SLIDE_ITEMS_PER_PAGE));
-    }
-    return arr;
-  }, [latest]);
-
-  const [page, setPage] = useState(0);
-  const pageCount = pages.length;
-
-  // 자동 슬라이드
-  useEffect(() => {
-    if (pageCount <= 1) return;
-    const t = setInterval(() => {
-      setPage((p) => (p + 1) % pageCount);
-    }, SLIDE_AUTO_MS);
-    return () => clearInterval(t);
-  }, [pageCount]);
-
-  return (
-    <div
-      className="rounded-2xl border border-dashed border-gray-300 bg-white/60 p-4"
-      style={{ position: "sticky", top: STICKY_TOP, height: STICKY_HEIGHT }}
-    >
-      {/* 1) 공지사항 */}
-      <section className="rounded-xl border border-dashed border-gray-300 bg-white p-3">
-        <h3 className="mb-2 text-sm font-semibold text-gray-700">공지사항</h3>
-
-        {/* 🛠️ EDIT ME: 공지사항 콘텐츠 */}
-        <div className="h-36 overflow-auto rounded-lg bg-gray-50 p-3 text-sm leading-6 text-gray-700">
-          <ul className="list-disc pl-4">
-            <li>BookMap 오픈 베타를 시작했습니다.</li>
-            <li>도서 자동 채움(ISBN) 개선 작업 진행 중입니다.</li>
-            <li>문의: admin@bookmap.example</li>
-          </ul>
-        </div>
-      </section>
-
-      {/* 2) NEW BOOK 슬라이드 */}
-      <section className="mt-4 rounded-xl border border-dashed border-gray-300 bg-white p-3">
-        <h3 className="mb-2 text-sm font-semibold text-gray-700">NEW BOOK</h3>
-
-        <div className="relative overflow-hidden">
-          {/* 슬라이드 트랙 */}
-          <div
-            className="flex transition-transform duration-500"
-            style={{ transform: `translateX(-${page * 100}%)`, width: `${pageCount * 100}%` }}
-          >
-            {pages.map((pg, idx) => (
-              <div key={idx} className="flex w-full shrink-0 justify-start gap-3">
-                {pg.map((b) => (
-                  <MiniBookCard key={b.id} book={b} />
-                ))}
-                {/* 빈자리 채우기(슬롯 고정) */}
-                {Array.from({ length: Math.max(0, SLIDE_ITEMS_PER_PAGE - pg.length) }).map((_, i) => (
-                  <div key={`empty-${i}`} className="w-[128px] shrink-0 rounded-xl border border-dashed border-gray-200 bg-gray-50" />
-                ))}
-              </div>
-            ))}
-          </div>
-
-          {/* 페이지 도트 */}
-          <div className="mt-2 flex items-center justify-center gap-2">
-            {Array.from({ length: pageCount || 1 }).map((_, i) => (
-              <button
-                key={i}
-                onClick={() => setPage(i)}
-                className={`h-1.5 w-6 rounded-full transition ${
-                  page === i ? "bg-gray-800" : "bg-gray-300 hover:bg-gray-400"
-                }`}
-                aria-label={`slide ${i + 1}`}
-              />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* 3) 이벤트 */}
-      <section className="mt-4 rounded-xl border border-dashed border-gray-300 bg-white p-3">
-        <h3 className="mb-2 text-sm font-semibold text-gray-700">이벤트</h3>
-
-        {/* 🛠️ EDIT ME: 이벤트 콘텐츠 */}
-        <div className="h-36 overflow-auto rounded-lg bg-indigo-50 p-3 text-sm leading-6 text-gray-700">
-          <p className="font-medium">📣 여름 독서 이벤트</p>
-          <p className="text-gray-600">도서를 등록/후기 작성 시 소정의 상품을 드립니다.</p>
-          <ul className="mt-2 list-disc pl-4 text-gray-600">
-            <li>기간: 8/1 ~ 8/31</li>
-            <li>대상: BookMap 회원</li>
-            <li>
-              참여: <Link href="/event" className="underline">이벤트 페이지</Link>
-            </li>
-          </ul>
-        </div>
-      </section>
-    </div>
-  );
-}
 
 /* ─────────────────────────────────────────────────────────────
    도서 카드 / 스켈레톤 (그리드)
@@ -543,10 +436,17 @@ export default function BookListGrid() {
         </div>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-7">
-          {/* 좌측: 고정(sticky) 박스 – 세로 3단(공지 → NEW BOOK 슬라이드 → 이벤트) */}
-          <aside className="hidden md:col-span-2 md:block">
-            <LeftPanel books={books} />
-          </aside>
+         {/* 좌측: 공용 컴포넌트 사용 (공지/NEW BOOK 슬라이드/이벤트) */}
+	<aside className="hidden md:col-span-2 md:block">
+  		<LeftPanel
+ 		   books={books}                 // 최신 도서 슬라이드에 사용
+  		  stickyTop={STICKY_TOP}        // 고정 시작 위치(px)
+ 		   stickyHeight={STICKY_HEIGHT}  // 패널 전체 높이(px)
+ 		   slideAutoMs={2000}            // 자동 넘김 간격(ms)
+  		  itemsPerPage={2}              // 한 페이지 도서 수
+ 		   maxPages={5}                  // 최대 페이지 수(=2*5권)
+		  />
+	</aside>
 
           {/* 우측: 필터 + 그리드 */}
           <section className="md:col-span-5">
