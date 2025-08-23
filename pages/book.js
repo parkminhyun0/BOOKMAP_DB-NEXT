@@ -32,7 +32,7 @@ const ENABLE_TEST_PLACEHOLDERS = true;
 const TEST_PLACEHOLDER_COUNT = 30;
 
 // NEW BOOK 슬라이더
-const SLIDE_AUTO_MS = 2000;   // 자동 슬라이드 간격(밀리초)
+const SLIDE_AUTO_MS = 5000;   // 자동 슬라이드 간격(밀리초)
 const SLIDE_ITEMS_PER_PAGE = 2; // 한 페이지에 보여줄 도서 수 (좌측 패널 폭 기준 2 권이 안정적)
 const SLIDE_MAX_PAGES = 5;      // 최대 페이지 수(=가져올 최신 도서 페이지 수)
 
@@ -443,7 +443,7 @@ export default function BookListGrid() {
  		   books={books}                 // 최신 도서 슬라이드에 사용
   		  stickyTop={STICKY_TOP}        // 고정 시작 위치(px)
  		   stickyHeight={STICKY_HEIGHT}  // 패널 전체 높이(px)
- 		   slideAutoMs={2000}            // 자동 넘김 간격(ms)
+ 		   slideAutoMs={5000}            // 자동 넘김 간격(ms)
   		  itemsPerPage={2}              // 한 페이지 도서 수
  		   maxPages={5}                  // 최대 페이지 수(=2*5권)
 		  />
