@@ -7,38 +7,17 @@ import Loader from "@/components/Loader";
    🔧 손대기 쉬운 옵션 (페이지 레이아웃/타이포 테스트용 상수들)
    ───────────────────────────────────────────────────────────── */
 
-/** 좌측 고정(sticky) 패널이 화면 상단에서 얼마나 떨어져 있을지(px)
- *  - 네비게이션 바 높이에 맞춰 조절하세요.
- *  - 보통 64~120 사이 권장. 값이 클수록 더 아래에서 고정됩니다. */
+/** 좌측 고정(sticky) 패널이 화면 상단에서 얼마나 떨어져 있을지(px) */
 const STICKY_TOP = 96;
-
-/** 좌측 고정(sticky) 패널의 세로 높이(px)
- *  - 좌측 박스(“좌측 영역(추후 컨텐츠)”)의 표시 높이입니다.
- *  - 내용이 더 길어지면 값 증가 또는 고정 높이 대신 내부 스크롤 처리 고려. */
+/** 좌측 고정(sticky) 패널의 세로 높이(px) */
 const STICKY_HEIGHT = 640;
-
-/** 도서 카드 제목(한 줄 자동맞춤)의 최대 글자 크기(px)
- *  - 긴 제목도 한 줄에 들어오도록 FitOneLine 컴포넌트가 12~16px 범위에서 조절합니다.
- *  - 카드가 넓다면 수치를 키우고, 좁다면 줄이세요. (권장 14~18) */
+/** 도서 카드 제목(한 줄 자동맞춤) 폰트 범위 */
 const TITLE_MAX_PX = 16;
-
-/** 도서 카드 제목(한 줄 자동맞춤)의 최소 글자 크기(px)
- *  - 제목이 너무 길 때 이 크기까지 줄여서라도 한 줄에 맞춥니다.
- *  - 너무 작으면 가독성이 떨어질 수 있으니 11~13px 권장. */
 const TITLE_MIN_PX = 12;
-
-/** 제목 한 줄 폭 계산 시 여유로 빼줄 가로 패딩(px)
- *  - 숫자가 클수록 실제 카드 폭보다 조금 덜 사용해 줄바꿈/잘림을 방지합니다.
- *  - 제목이 살짝 끊겨 보이면 값을 +2~+4씩 올려보세요. (권장 8~16) */
+/** 제목 폭 측정시 좌우 여유(px) */
 const TITLE_PADDING_H = 12;
-
-/** [테스트 전용] 스크롤/레이아웃 확인용 가짜(placeholder) 카드 추가 여부
- *  - true  : 목록 끝에 TEST_PLACEHOLDER_COUNT 개수만큼 빈 카드가 붙습니다.
- *  - false : 실제 데이터만 표시 (배포 시 반드시 false 권장). */
+/** 스크롤 테스트용 placeholder ON/OFF */
 const ENABLE_TEST_PLACEHOLDERS = true;
-
-/** [테스트 전용] placeholder 카드 개수
- *  - ENABLE_TEST_PLACEHOLDERS 가 true일 때만 적용됩니다. */
 const TEST_PLACEHOLDER_COUNT = 50;
 /* ───────────────────────────────────────────────────────────── */
 
@@ -168,7 +147,7 @@ function BookCardSkeleton() {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   🏷️ 필터 바 (그대로 유지)
+   🏷️ 필터 바
    ───────────────────────────────────────────────────────────── */
 const LEVEL_ORDER = ["입문", "초급", "중급", "고급", "전문"];
 const DIVISION_ORDER = ["국내서", "국외서", "원서", "번역서"];
@@ -338,6 +317,205 @@ function FilterBar({ facets, facet, onChange }) {
 }
 
 /* ─────────────────────────────────────────────────────────────
+   📌 좌측 고정 패널: 공지/슬라이드/이벤트 (3열)
+   ───────────────────────────────────────────────────────────── */
+function LeftPanel({ books }) {
+  // 공지/이벤트 API 폴백
+  const [notices, setNotices] = useState([]);
+  const [events, setEvents] = useState([]);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        const r = await fetch("/api/notices?limit=6");
+        if (alive && r.ok) {
+          const j = await r.json();
+          setNotices(j || []);
+        }
+      } catch (_) {}
+      // 폴백
+      setNotices((prev) =>
+        prev.length
+          ? prev
+          : [
+              { id: "n1", title: "BookMap 오픈 베타 공지", date: "2025-08-01" },
+              { id: "n2", title: "ISBN 자동 채움 안내", date: "2025-08-10" },
+              { id: "n3", title: "BOOK MAP 그래픽 뷰 업데이트", date: "2025-08-20" },
+            ]
+      );
+    })();
+
+    (async () => {
+      try {
+        const r = await fetch("/api/events?limit=6");
+        if (alive && r.ok) {
+          const j = await r.json();
+          setEvents(j || []);
+        }
+      } catch (_) {}
+      setEvents((prev) =>
+        prev.length
+          ? prev
+          : [
+              { id: "e1", title: "가을 독서 이벤트 (포인트 지급)", date: "2025-09-01" },
+              { id: "e2", title: "신간 추천 참여 이벤트", date: "2025-09-10" },
+            ]
+      );
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // 최신 등록 도서 슬라이드 (이미지 있는 것 위주)
+  const recentBooks = useMemo(() => {
+    const withImg = (books || []).filter((b) => b?.image);
+    return sortBooks(withImg).slice(0, 12);
+  }, [books]);
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-gray-700">왼쪽 패널</h2>
+        <span className="text-xs text-gray-400">공지 / 최신도서 / 이벤트</span>
+      </div>
+
+      <div className="grid h-full grid-cols-3 gap-3">
+        {/* 공지 */}
+        <section className="rounded-xl border border-gray-200 bg-white p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-xs font-semibold text-gray-700">공지사항</h3>
+            <Link href="/notice" className="text-[11px] text-blue-600 hover:underline">
+              더보기
+            </Link>
+          </div>
+          <ul className="space-y-2 overflow-auto pr-1" style={{ maxHeight: STICKY_HEIGHT - 80 }}>
+            {notices.length === 0 ? (
+              <li className="text-xs text-gray-400">등록된 공지가 없습니다.</li>
+            ) : (
+              notices.map((n) => (
+                <li key={n.id} className="group">
+                  <div className="flex items-start gap-2">
+                    <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-blue-500" />
+                    <div className="min-w-0">
+                      <p className="truncate text-[13px] text-gray-800 group-hover:underline">{n.title}</p>
+                      {n.date && <p className="text-[11px] text-gray-400">{n.date}</p>}
+                    </div>
+                  </div>
+                </li>
+              ))
+            )}
+          </ul>
+        </section>
+
+        {/* 최신 도서 슬라이드 */}
+        <section className="relative overflow-hidden rounded-xl border border-gray-200 bg-white">
+          <SlideRecentBooks items={recentBooks} />
+        </section>
+
+        {/* 이벤트 */}
+        <section className="rounded-xl border border-gray-200 bg-white p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-xs font-semibold text-gray-700">이벤트</h3>
+            <Link href="/event" className="text-[11px] text-blue-600 hover:underline">
+              더보기
+            </Link>
+          </div>
+          <ul className="space-y-2 overflow-auto pr-1" style={{ maxHeight: STICKY_HEIGHT - 80 }}>
+            {events.length === 0 ? (
+              <li className="text-xs text-gray-400">진행 중인 이벤트가 없습니다.</li>
+            ) : (
+              events.map((e) => (
+                <li key={e.id} className="group">
+                  <div className="flex items-start gap-2">
+                    <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-rose-500" />
+                    <div className="min-w-0">
+                      <p className="truncate text-[13px] text-gray-800 group-hover:underline">{e.title}</p>
+                      {e.date && <p className="text-[11px] text-gray-400">{e.date}</p>}
+                    </div>
+                  </div>
+                </li>
+              ))
+            )}
+          </ul>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+/* 🎞️ 최신 도서 슬라이드 (2초 간격, 호버시 일시정지) */
+function SlideRecentBooks({ items }) {
+  const [idx, setIdx] = useState(0);
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    if (!items || items.length <= 1) return;
+    const t = setInterval(() => {
+      if (!paused) setIdx((i) => (i + 1) % items.length);
+    }, 2000);
+    return () => clearInterval(t);
+  }, [items, paused]);
+
+  if (!items || items.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center p-6 text-xs text-gray-400">
+        최신 등록된 도서가 없습니다.
+      </div>
+    );
+  }
+
+  const cur = items[idx];
+
+  return (
+    <div
+      className="flex h-full flex-col"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
+      <div className="relative flex-1">
+        <Link href={`/book/${cur.id}`} className="absolute inset-0">
+          <div className="absolute inset-0 p-3">
+            <div className="h-full w-full overflow-hidden rounded-lg bg-gray-100">
+              {cur.image ? (
+                <img src={cur.image} alt={cur.title} className="h-full w-full object-cover" />
+              ) : (
+                <div className="h-full w-full bg-gray-200" />
+              )}
+            </div>
+          </div>
+        </Link>
+
+        {/* 점 인디케이터 */}
+        <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1.5">
+          {items.map((_, i) => (
+            <button
+              key={i}
+              onClick={(e) => {
+                e.preventDefault();
+                setIdx(i);
+              }}
+              className={`h-1.5 w-1.5 rounded-full transition ${
+                i === idx ? "bg-gray-900" : "bg-gray-300 hover:bg-gray-400"
+              }`}
+              aria-label={`slide-${i + 1}`}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="px-3 pb-3 pt-2">
+        <p className="truncate text-[13px] font-medium text-gray-800">{cur.title}</p>
+        {cur.author && <p className="truncate text-xs text-gray-500">{cur.author}</p>}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
    📄 페이지
    ───────────────────────────────────────────────────────────── */
 export default function BookListGrid() {
@@ -354,7 +532,7 @@ export default function BookListGrid() {
     return () => clearTimeout(skelTimer);
   }, [loading]);
 
-  // 오버레이: 로딩 끝난 후 200ms 동안 유지 → 부드럽게 사라짐
+  // 오버레이: 로딩 끝난 후 200ms 유지 후 사라짐
   useEffect(() => {
     if (loading) {
       setOverlay(true);
@@ -423,15 +601,13 @@ export default function BookListGrid() {
         </div>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-7">
-          {/* 좌측: 고정 패널 */}
+          {/* 좌측: 고정(sticky) 박스 - 3열 컨텐츠(공지/슬라이드/이벤트) */}
           <aside className="hidden md:col-span-2 md:block">
             <div
               className="rounded-2xl border border-dashed border-gray-300 bg-white/60 p-4"
               style={{ position: "sticky", top: STICKY_TOP, height: STICKY_HEIGHT }}
             >
-              <div className="flex h-full items-center justify-center text-sm text-gray-400">
-                좌측 영역(추후 컨텐츠)
-              </div>
+              <LeftPanel books={books} />
             </div>
           </aside>
 
