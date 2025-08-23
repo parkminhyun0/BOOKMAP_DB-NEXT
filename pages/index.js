@@ -76,7 +76,7 @@ export default function Home() {
           {/* 서브 카피 */}
           <p className="mb-10 text-[clamp(0.9rem,1.3vw,1.05rem)] text-gray-600 max-w-3xl [text-wrap:balance]">
             여러분들의 독서 경험을 통해, 많은 사람들에게 유익한{" "}
-            <span className="font-semibold text-gray-800">BOOK MAP</span>을 만들어 봅시다.
+            <span className="font-semibold text-gray-800">BOOK MAP</span>을 만듭니다.
           </p>
 
           <ShinyButton>BOOK MAP LOGIN</ShinyButton>
