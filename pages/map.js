@@ -1,41 +1,73 @@
 // pages/map.js
 import { useEffect, useMemo, useRef, useState } from "react";
-import ForceGraph2D from "react-force-graph-2d";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/router";
 
-/* ── UI 상수 (도서목록과 맞춤) ───────────────────────────────────────── */
+// 2D Force Graph – SSR 비활성
+const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
+  ssr: false,
+  loading: () => (
+    <div className="absolute inset-0 flex items-center justify-center text-gray-500">
+      그래프 초기화…
+    </div>
+  ),
+});
+
+/* ─────────────────────────────────────────────────────────────
+   옵션 (도서목록 좌측 패널과 동일 크기/역할을 가정)
+   ───────────────────────────────────────────────────────────── */
 const STICKY_TOP = 96;
 const STICKY_HEIGHT = 640;
 
-/* 관계 타입별 색/스타일 */
-const EDGE_STYLES = {
-  카테고리: { color: "#7c3aed", lineDash: null },  // 보라 실선
-  단계:     { color: "#fb923c", lineDash: null },  // 오렌지 실선
-  저자:     { color: "#10b981", lineDash: null },  // 초록 실선
-  역자:     { color: "#94a3b8", lineDash: [4, 4] },// 회색 점선
-  주제:     { color: "#ef4444", lineDash: null },  // 빨강 실선
-  장르:     { color: "#3b82f6", lineDash: null },  // 파랑 실선
-  구분:     { color: "#9ca3af", lineDash: [2, 6] } // 연회색 점선
+// 관계 타입 목록과 색/스타일 매핑
+const TYPES = ["카테고리", "단계", "저자", "역자", "주제", "장르", "구분"];
+
+const TYPE_COLOR = {
+  카테고리: "#a855f7", // violet-500
+  단계: "#f59e0b",     // amber-500
+  저자: "#10b981",     // emerald-500
+  역자: "#06b6d4",     // sky-500
+  주제: "#ef4444",     // red-500
+  장르: "#3b82f6",     // blue-500
+  구분: "#9ca3af",     // gray-400
 };
 
-/* 노드 컬러: 탭/기준에 따라 점 색을 바꿔 표시 */
-const DOT_COLORS_BY_TAB = {
-  카테고리: "#7c3aed",
-  단계: "#fb923c",
-  저자: "#10b981",
-  역자: "#94a3b8",
-  주제: "#ef4444",
-  장르: "#3b82f6",
-  구분: "#9ca3af",
-  전체: "#6b7280",
+const TYPE_DASH = {
+  카테고리: [],
+  단계: [],
+  저자: [],
+  역자: [6, 6],      // 점선
+  주제: [],
+  장르: [],
+  구분: [4, 8],      // 점선
 };
 
-const TABS = ["전체", "카테고리", "단계", "저자", "역자", "주제", "장르", "구분"];
+const TYPE_WIDTH = {
+  카테고리: 1.5,
+  단계: 1.5,
+  저자: 2.2,
+  역자: 2.0,
+  주제: 2.0,
+  장르: 2.0,
+  구분: 1.5,
+};
 
-/* 문자열 유틸 */
+/* ─────────────────────────────────────────────────────────────
+   유틸
+   ───────────────────────────────────────────────────────────── */
 const norm = (v) => String(v ?? "").trim();
 
-/* 목록형 필드만 쉼표/슬래시 등 구분자로 나눔 */
+function normalizeDivision(v) {
+  const s = norm(v);
+  if (!s) return "";
+  if (s.includes("번역")) return "번역서";
+  if (s.includes("원서")) return "원서";
+  if (s.includes("국외") || s.includes("해외")) return "국외서";
+  if (s.includes("국내")) return "국내서";
+  return s;
+}
+
+// 쉼표/구분자 분리(공백은 분리자 X)
 function splitList(input) {
   if (!input) return [];
   let s = String(input);
@@ -46,226 +78,272 @@ function splitList(input) {
     .filter(Boolean);
 }
 
-/* “그대로 1개 문자열”로 취급할 필드(저자/역자 등) */
-const wholeField = (input) => {
-  const s = norm(input);
-  return s ? [s] : [];
-};
+// 저자/역자는 절대 분리하지 않고 “전체 문자열”
+const whole = (x) => (norm(x) ? [norm(x)] : []);
 
-/* 도서 → 그래프 노드 */
-function toNode(book, idx) {
-  return {
-    id: String(book.id ?? idx),
-    label: norm(book.title) || "(제목 없음)",
-    image: norm(book.image),
-    raw: book,
-  };
-}
-
-/* facet 값 수집 (칩 목록 생성용) */
 function extractFacets(books) {
-  const sets = {
-    카테고리: new Set(),
-    단계: new Set(),
-    저자: new Set(),
-    역자: new Set(),
-    주제: new Set(),
-    장르: new Set(),
-    구분: new Set(),
-  };
+  const setCategory = new Set();
+  const setAuthor = new Set();
+  const setTranslator = new Set();
+  const setSubject = new Set();
+  const setGenre = new Set();
+  const setDivision = new Set();
+  const setLevel = new Set();
+
   for (const b of books) {
-    splitList(b.category).forEach((t) => sets.카테고리.add(t));
-    wholeField(b.level).forEach((t) => sets.단계.add(t));
-    wholeField(b.author).forEach((t) => sets.저자.add(t));
-    wholeField(b.translator ?? b["역자"]).forEach((t) => sets.역자.add(t));
-    splitList(b.subject).forEach((t) => sets.주제.add(t));
-    splitList(b.genre).forEach((t) => sets.장르.add(t));
-    wholeField(b.division).forEach((t) => sets.구분.add(t));
+    splitList(b.category).forEach((t) => setCategory.add(t));
+    whole(b.author).forEach((t) => setAuthor.add(t));
+    whole(b.translator ?? b["역자"]).forEach((t) => setTranslator.add(t));
+    splitList(b.subject).forEach((t) => setSubject.add(t));
+    splitList(b.genre).forEach((t) => setGenre.add(t));
+    const div = normalizeDivision(b.division);
+    if (div) setDivision.add(div);
+    const lvl = norm(b.level);
+    if (lvl) setLevel.add(lvl);
   }
-  const toSorted = (s) => [...s].sort((a, b) => a.localeCompare(b, "ko"));
-  return Object.fromEntries(
-    Object.entries(sets).map(([k, set]) => [k, toSorted(set)])
-  );
+  const sort = (arr) => [...arr].sort((a, b) => a.localeCompare(b, "ko"));
+
+  return {
+    카테고리: sort(setCategory),
+    단계: sort(setLevel),
+    저자: sort(setAuthor),
+    역자: sort(setTranslator),
+    주제: sort(setSubject),
+    장르: sort(setGenre),
+    구분: sort(setDivision),
+  };
 }
 
-/* 두 도서가 특정 기준으로 연결되는지 판별 */
-function sharesValueByTab(tab, a, b) {
-  switch (tab) {
-    case "카테고리": {
-      const A = new Set(splitList(a.category));
-      return splitList(b.category).some((x) => A.has(x));
-    }
-    case "단계": return norm(a.level) && norm(a.level) === norm(b.level);
-    case "저자": return norm(a.author) && norm(a.author) === norm(b.author);
-    case "역자": {
-      const va = norm(a.translator ?? a["역자"]);
-      const vb = norm(b.translator ?? b["역자"]);
-      return va && va === vb;
-    }
-    case "주제": {
-      const A = new Set(splitList(a.subject));
-      return splitList(b.subject).some((x) => A.has(x));
-    }
-    case "장르": {
-      const A = new Set(splitList(a.genre));
-      return splitList(b.genre).some((x) => A.has(x));
-    }
-    case "구분": {
-      const va = norm(a.division);
-      const vb = norm(b.division);
-      return va && va === vb;
-    }
-    default:
-      return false;
-  }
+/* ─────────────────────────────────────────────────────────────
+   사이즈 측정 훅
+   ───────────────────────────────────────────────────────────── */
+function useSize(ref) {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    if (!ref.current) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) {
+        const cr = e.contentRect;
+        setSize({ width: Math.round(cr.width), height: Math.round(cr.height) });
+      }
+    });
+    ro.observe(ref.current);
+    return () => ro.disconnect();
+  }, [ref]);
+  return size;
 }
 
-/* 특정 탭에서 선택된 값(칩)과 일치하는지 */
-function matchesSelectedValues(tab, selectedValues, book) {
-  if (!selectedValues?.length) return true; // 아무것도 선택 안했으면 전체 허용
-  const lowerSet = new Set(selectedValues.map((v) => v.toLowerCase()));
-
-  const pick = (vals) => vals.some((v) => lowerSet.has(norm(v).toLowerCase()));
-
-  switch (tab) {
-    case "카테고리":
-      return pick(splitList(book.category));
-    case "단계":
-      return pick(wholeField(book.level));
-    case "저자":
-      return pick(wholeField(book.author));
-    case "역자":
-      return pick(wholeField(book.translator ?? book["역자"]));
-    case "주제":
-      return pick(splitList(book.subject));
-    case "장르":
-      return pick(splitList(book.genre));
-    case "구분":
-      return pick(wholeField(book.division));
-    default:
-      return true;
-  }
-}
-
-export default function BookMap() {
+/* ─────────────────────────────────────────────────────────────
+   페이지 컴포넌트
+   ───────────────────────────────────────────────────────────── */
+export default function BookMapPage() {
   const router = useRouter();
-  const graphRef = useRef(null);
-  const wrapRef = useRef(null); // 그래프 래퍼(툴팁 좌표 기준 컨테이너)
-  const [books, setBooks] = useState([]);
-  const [tab, setTab] = useState("전체");
-  const [selectedValues, setSelectedValues] = useState([]); // 칩 토글 상태
-  const [hover, setHover] = useState({ node: null, x: 0, y: 0 });
-  const [loading, setLoading] = useState(true);
+  const [isClient, setIsClient] = useState(false);
 
   // 데이터 로드
+  const [books, setBooks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+
+  // 필터 탭 + 칩(도서목록과 동일 UX)
+  const [tab, setTab] = useState("전체"); // "전체" 또는 TYPES 항목
+  const [chip, setChip] = useState(null); // 선택된 하위 값(없으면 null)
+
+  // 그래프/툴팁
+  const graphRef = useRef(null);
+  const wrapRef = useRef(null);
+  const { width, height } = useSize(wrapRef);
+  const [hover, setHover] = useState({ node: null, x: 0, y: 0 });
+
+  useEffect(() => setIsClient(true), []);
+
   useEffect(() => {
+    setErr("");
     setLoading(true);
     fetch("/api/books?source=both&prefer=remote")
-      .then((r) => r.json())
-      .then((arr) => {
-        setBooks((arr || []).map((b, i) => ({ ...b, id: String(b.id ?? i) })));
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`API ${r.status}`);
+        return r.json();
       })
+      .then((raw) => {
+        const normalized = (raw || []).map((b) => ({
+          ...b,
+          id: b?.id != null ? String(b.id) : null,
+        }));
+        setBooks(normalized);
+      })
+      .catch((e) => setErr(e.message || "데이터 로드 실패"))
       .finally(() => setLoading(false));
   }, []);
 
   const facets = useMemo(() => extractFacets(books), [books]);
 
-  // 노드 / 링크 구성
-  const { nodes, links } = useMemo(() => {
-    const nodes = books.map(toNode);
+  // 현재 탭의 칩 목록
+  const chipList = useMemo(() => (TYPES.includes(tab) ? facets[tab] || [] : []), [tab, facets]);
 
-    // 현재 탭이 "전체"이면: 모든 기준으로 링크를 생성
-    const linkList = [];
-    const activeTabs = tab === "전체" ? TABS.filter((t) => t !== "전체") : [tab];
+  // 탭/칩 기준으로 노드 필터링
+  const filteredBooks = useMemo(() => {
+    if (tab === "전체" || !TYPES.includes(tab)) return books;
+    if (!chip) return books; // 탭만 선택 시 전체 노드 노출
+    const v = norm(chip).toLowerCase();
 
-    for (let i = 0; i < books.length; i++) {
-      for (let j = i + 1; j < books.length; j++) {
-        const A = books[i];
-        const B = books[j];
+    return books.filter((b) => {
+      switch (tab) {
+        case "카테고리":
+          return splitList(b.category).map((t) => t.toLowerCase()).includes(v);
+        case "단계":
+          return norm(b.level).toLowerCase() === v;
+        case "저자":
+          return norm(b.author).toLowerCase() === v;
+        case "역자":
+          return norm(b.translator ?? b["역자"]).toLowerCase() === v;
+        case "주제":
+          return splitList(b.subject).map((t) => t.toLowerCase()).includes(v);
+        case "장르":
+          return splitList(b.genre).map((t) => t.toLowerCase()).includes(v);
+        case "구분":
+          return normalizeDivision(b.division).toLowerCase() === v;
+        default:
+          return true;
+      }
+    });
+  }, [books, tab, chip]);
 
-        // 선택 칩을 적용한 필터(탭이 전체일 때는 선택 칩 무시)
-        const passesA = tab === "전체" ? true : matchesSelectedValues(tab, selectedValues, A);
-        const passesB = tab === "전체" ? true : matchesSelectedValues(tab, selectedValues, B);
-        if (!passesA || !passesB) continue;
+  // 그래프 노드
+  const nodes = useMemo(
+    () =>
+      filteredBooks.map((b) => ({
+        id: b.id,
+        title: b.title,
+        author: b.author,
+        publisher: b.publisher,
+        image: b.image,
+        raw: b,
+      })),
+    [filteredBooks]
+  );
 
-        activeTabs.forEach((t) => {
-          if (sharesValueByTab(t, A, B)) {
-            const style = EDGE_STYLES[t] || { color: "#aaa", lineDash: null };
-            linkList.push({
-              source: String(A.id),
-              target: String(B.id),
-              type: t,
-              color: style.color,
-              lineDash: style.lineDash,
-            });
-          }
-        });
+  // 그래프 링크(모든 관계 타입을 생성, 현재 필터와 무관하게 보여줌)
+  const links = useMemo(() => {
+    const id2book = new Map(books.map((b) => [String(b.id), b]));
+    const arr = [];
+
+    const n = filteredBooks.length;
+    for (let i = 0; i < n; i++) {
+      const A = filteredBooks[i];
+      for (let j = i + 1; j < n; j++) {
+        const B = filteredBooks[j];
+        const rels = [];
+
+        // 카테고리
+        if (intersects(splitList(A.category), splitList(B.category))) rels.push("카테고리");
+        // 단계
+        if (norm(A.level) && norm(A.level) === norm(B.level)) rels.push("단계");
+        // 저자(전체 문자열 일치)
+        if (norm(A.author) && norm(A.author) === norm(B.author)) rels.push("저자");
+        // 역자(전체 문자열 일치)
+        const aT = norm(A.translator ?? A["역자"]);
+        const bT = norm(B.translator ?? B["역자"]);
+        if (aT && aT === bT) rels.push("역자");
+        // 주제
+        if (intersects(splitList(A.subject), splitList(B.subject))) rels.push("주제");
+        // 장르
+        if (intersects(splitList(A.genre), splitList(B.genre))) rels.push("장르");
+        // 구분
+        const aD = normalizeDivision(A.division);
+        const bD = normalizeDivision(B.division);
+        if (aD && aD === bD) rels.push("구분");
+
+        // 링크 생성(관계마다 1개씩)
+        for (const t of rels) {
+          arr.push({ source: String(A.id), target: String(B.id), type: t });
+        }
       }
     }
-    return { nodes, links: linkList };
-  }, [books, tab, selectedValues]);
+    return arr;
 
-  // 칩 후보 목록
-  const chipValues = useMemo(() => (tab === "전체" ? [] : facets[tab] || []), [facets, tab]);
-
-  // 툴팁 좌표 및 내용 갱신
-  const handleHover = (node) => {
-    if (!node || !graphRef.current || !wrapRef.current) {
-      setHover({ node: null, x: 0, y: 0 });
-      return;
+    function intersects(a, b) {
+      if (!a.length || !b.length) return false;
+      const set = new Set(a.map((x) => x.toLowerCase()));
+      return b.some((x) => set.has(x.toLowerCase()));
     }
-    const { x, y } = graphRef.current.graph2ScreenCoords(node.x, node.y);
-    setHover({ node, x, y });
+  }, [filteredBooks, books]);
+
+  // 노드 색: 현재 탭 기준(전체면 회색)
+  const nodeColor = useMemo(() => {
+    const c = TYPES.includes(tab) ? TYPE_COLOR[tab] : "#6b7280"; // gray-500
+    return c;
+  }, [tab]);
+
+  // 노드 렌더링(도트 + 텍스트)
+  const drawNode = (node, ctx, scale) => {
+    const r = 4.5;
+    ctx.beginPath();
+    ctx.fillStyle = nodeColor;
+    ctx.arc(node.x, node.y, r, 0, 2 * Math.PI, false);
+    ctx.fill();
+
+    // 제목
+    const label = node.title || "";
+    ctx.font = `${Math.max(10, 12 / (scale ** 0.15))}px ui-sans-serif, -apple-system, BlinkMacSystemFont`;
+    ctx.textBaseline = "top";
+    ctx.fillStyle = "#374151"; // gray-700
+    ctx.fillText(label, node.x + 8, node.y + 6);
   };
 
-  // 캔버스 드로잉(선 스타일)
-  const linkCanvasObjectMode = () => "after";
-  const linkCanvasObject = (link, ctx) => {
-    if (!link) return;
+  // 링크는 캔버스로 직접 그려서 점선/두께 반영
+  const drawLink = (link, ctx) => {
+    const color = TYPE_COLOR[link.type] || "#9ca3af";
+    const width = TYPE_WIDTH[link.type] || 1.5;
+    const dash = TYPE_DASH[link.type] || [];
+
+    const sx = link.source.x;
+    const sy = link.source.y;
+    const tx = link.target.x;
+    const ty = link.target.y;
+
     ctx.save();
-    ctx.strokeStyle = link.color || "#aaa";
-    if (link.lineDash) ctx.setLineDash(link.lineDash);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    if (dash.length) ctx.setLineDash(dash);
     ctx.beginPath();
-    ctx.moveTo(link.source.x, link.source.y);
-    ctx.lineTo(link.target.x, link.target.y);
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(tx, ty);
     ctx.stroke();
     ctx.restore();
   };
 
-  // 노드 색상
-  const nodeColor = (n) => (tab === "전체"
-    ? DOT_COLORS_BY_TAB["전체"]
-    : DOT_COLORS_BY_TAB[tab] || "#6b7280");
-
-  // 노드 클릭 → 상세 페이지로
-  const onNodeClick = (n) => {
-    const id = n?.id ?? n?.raw?.id;
-    if (id) router.push(`/book/${id}`);
+  // 호버 핸들러(툴팁 좌표 변환)
+  const handleHover = (node) => {
+    if (!isClient || !node || !graphRef.current) {
+      setHover({ node: null, x: 0, y: 0 });
+      return;
+    }
+    const p = graphRef.current.graph2ScreenCoords(node.x, node.y);
+    setHover({ node, x: p.x, y: p.y });
   };
 
-  // 칩 토글
-  const toggleChip = (val) => {
-    setSelectedValues((prev) =>
-      prev.includes(val) ? prev.filter((v) => v !== val) : [...prev, val]
-    );
+  const handleClick = (node) => {
+    if (!node?.id) return;
+    router.push(`/book/${node.id}`);
   };
 
-  // 탭 변경 시 선택 칩 초기화
-  useEffect(() => {
-    setSelectedValues([]);
-  }, [tab]);
+  const total = nodes.length;
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        <h1 className="mb-6 text-2xl font-extrabold text-blue-600">BOOK MAP GRAPHIC VIEW</h1>
+        <h1 className="mb-4 text-2xl font-extrabold text-blue-600">BOOK MAP GRAPHIC VIEW</h1>
 
         {/* 탭 */}
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          {TABS.map((t) => (
+        <div className="mb-2 flex flex-wrap gap-2">
+          {["전체", ...TYPES].map((t) => (
             <button
               key={t}
-              onClick={() => setTab(t)}
+              onClick={() => {
+                setTab(t);
+                setChip(null);
+              }}
               className={`rounded-full border px-3 py-1.5 text-sm transition ${
                 tab === t
                   ? "bg-gray-900 text-white border-gray-900"
@@ -277,81 +355,56 @@ export default function BookMap() {
           ))}
         </div>
 
-        {/* 하위 값 칩(도서목록과 동일 UX) */}
-        {tab !== "전체" && (
-          <div className="mb-4 flex flex-wrap items-center gap-2">
+        {/* 칩(도서목록과 동일 UX) */}
+        {TYPES.includes(tab) && (
+          <div className="mb-3 flex flex-wrap gap-2">
             <button
-              onClick={() => setSelectedValues([])}
-              className={`rounded-full border px-3 py-1.5 text-sm ${
-                selectedValues.length === 0
+              onClick={() => setChip(null)}
+              className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                chip == null
                   ? "bg-blue-600 text-white border-blue-600"
                   : "text-gray-700 border-gray-300 hover:bg-gray-100"
               }`}
             >
               전체
             </button>
-            {chipValues.map((val) => (
+            {chipList.map((v) => (
               <button
-                key={val}
-                onClick={() => toggleChip(val)}
-                className={`rounded-full border px-3 py-1.5 text-sm ${
-                  selectedValues.includes(val)
+                key={v}
+                onClick={() => setChip(v === chip ? null : v)}
+                className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                  chip === v
                     ? "bg-blue-600 text-white border-blue-600"
                     : "text-gray-700 border-gray-300 hover:bg-gray-100"
                 }`}
+                title={v}
               >
-                {val}
+                {v}
               </button>
             ))}
           </div>
         )}
 
         {/* 범례 */}
-        <div className="mb-4 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700">
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-            <span className="font-semibold">노드(도트) 색상 안내:</span>
-            {["카테고리", "단계", "저자", "역자", "주제", "장르", "구분"].map((k) => (
-              <span key={k} className="inline-flex items-center gap-1">
-                <span
-                  className="inline-block h-2.5 w-2.5 rounded-full"
-                  style={{ background: DOT_COLORS_BY_TAB[k] }}
-                />
-                {k}
-              </span>
-            ))}
+        <div className="mb-4 rounded-2xl border border-gray-200 bg-white px-4 py-3">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+            <div className="font-semibold text-gray-700">노드(도트) 색상 안내:</div>
+            <LegendDots />
           </div>
-
-          <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2">
-            <span className="font-semibold">연결선 색/스타일 안내:</span>
-            {Object.entries(EDGE_STYLES).map(([k, v]) => (
-              <span key={k} className="inline-flex items-center gap-2">
-                <svg width="36" height="8">
-                  <line
-                    x1="0"
-                    y1="4"
-                    x2="36"
-                    y2="4"
-                    stroke={v.color}
-                    strokeWidth="2"
-                    strokeDasharray={v.lineDash ? v.lineDash.join(",") : "0"}
-                  />
-                </svg>
-                {k}
-              </span>
-            ))}
+          <div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+            <div className="font-semibold text-gray-700">연결선 색/스타일 안내:</div>
+            <LegendLines />
           </div>
-
-          <div className="mt-2 text-xs text-gray-500">
+          <p className="mt-2 text-xs text-gray-500">
             같은 기준 값을 공유하는 도서들이 선으로 연결됩니다. 노드를 클릭하면 도서 상세로 이동합니다.
-          </div>
+          </p>
         </div>
 
-        {/* 레이아웃: 좌 2 + 우 5 (도서목록과 동일 크기/역할) */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-7">
-          {/* 좌측 고정 박스 */}
+          {/* 좌측: 도서목록과 동일 크기의 고정 영역 */}
           <aside className="hidden md:col-span-2 md:block">
             <div
-              className="rounded-2xl border border-dashed border-gray-300 bg-white p-4"
+              className="rounded-2xl border border-dashed border-gray-300 bg-white/60 p-4"
               style={{ position: "sticky", top: STICKY_TOP, height: STICKY_HEIGHT }}
             >
               <div className="flex h-full items-center justify-center text-sm text-gray-400">
@@ -360,80 +413,96 @@ export default function BookMap() {
             </div>
           </aside>
 
-          {/* 그래프 영역 */}
+          {/* 우측: 그래프 */}
           <section className="md:col-span-5">
             <div
               ref={wrapRef}
               className="relative rounded-2xl border border-gray-200 bg-white"
-              style={{ height: STICKY_HEIGHT, overflow: "hidden" }}
+              style={{ minHeight: 520, height: 640, overflow: "hidden" }}
             >
-              {!loading && (
+              {err && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center text-red-600">
+                  데이터 로드 오류: {err}
+                </div>
+              )}
+
+              {isClient && !loading && (
                 <ForceGraph2D
                   ref={graphRef}
+                  width={width}
+                  height={height}
                   graphData={{ nodes, links }}
-                  nodeLabel="label"
-                  nodeAutoColorBy={null}
-                  nodeColor={nodeColor}
-                  nodeRelSize={6}
-                  linkDirectionalParticles={0}
+                  nodeLabel="title"
+                  nodeCanvasObject={drawNode}
+                  // 기본 링크는 숨기고 캔버스로 직접 그림(점선/두께 반영)
+                  linkColor={() => "rgba(0,0,0,0)"}
+                  linkCanvasObject={drawLink}
+                  linkCanvasObjectMode={() => "after"}
                   onNodeHover={handleHover}
-                  onNodeClick={onNodeClick}
-                  linkCanvasObjectMode={linkCanvasObjectMode}
-                  linkCanvasObject={linkCanvasObject}
-                  width={undefined}
-                  height={undefined}
+                  onNodeClick={handleClick}
+                  cooldownTicks={120}
                 />
               )}
 
-              {/* 커스텀 툴팁: 그래프 래퍼 내부에 absolute로 고정 */}
+              {/* 툴팁 */}
               {hover.node && (
                 <div
-                  className="pointer-events-none absolute z-20 w-56 rounded-xl border border-gray-200 bg-white p-3 shadow-lg"
+                  className="pointer-events-none absolute z-20 min-w-[160px] max-w-[240px] rounded-lg bg-gray-900/90 px-3 py-2 text-xs text-white shadow-lg"
                   style={{
-                    left: Math.max(8, Math.min(hover.x + 12, (wrapRef.current?.clientWidth || 0) - 240)),
-                    top: Math.max(8, Math.min(hover.y + 12, (wrapRef.current?.clientHeight || 0) - 120)),
+                    left: Math.max(8, Math.min((hover.x || 0) + 10, (width || 300) - 170)),
+                    top: Math.max(8, Math.min((hover.y || 0) - 10, (height || 200) - 80)),
                   }}
                 >
-                  <div className="mb-2 flex gap-3">
-                    <div className="h-14 w-10 overflow-hidden rounded bg-gray-100">
-                      {hover.node.image ? (
-                        <img
-                          src={hover.node.image}
-                          alt=""
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="h-full w-full bg-gray-200" />
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <div className="line-clamp-2 text-sm font-semibold text-gray-900">
-                        {hover.node.label}
-                      </div>
-                      <div className="mt-0.5 text-xs text-gray-500">
-                        {norm(hover.node.raw?.author)}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-[11px] text-gray-500">
-                    클릭하면 도서 상세로 이동
-                  </div>
-                </div>
-              )}
-
-              {/* 로딩 오버레이(짧게 표시) */}
-              {loading && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="rounded-lg bg-white/70 px-4 py-2 text-sm text-gray-600 shadow">
-                    그래프 불러오는 중…
-                  </div>
+                  <div className="font-semibold">{hover.node.title}</div>
+                  {hover.node.author && <div className="mt-0.5 opacity-90">{hover.node.author}</div>}
                 </div>
               )}
             </div>
+
+            <p className="mt-3 text-xs text-gray-500">노드 수: {total}개</p>
           </section>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   범례 컴포넌트
+   ───────────────────────────────────────────────────────────── */
+function LegendDots() {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      {TYPES.map((t) => (
+        <span key={t} className="inline-flex items-center gap-2">
+          <span
+            className="inline-block h-2.5 w-2.5 rounded-full"
+            style={{ background: TYPE_COLOR[t] }}
+          />
+          <span className="text-gray-700">{t}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function LegendLines() {
+  return (
+    <div className="flex flex-wrap items-center gap-4">
+      {TYPES.map((t) => (
+        <span key={t} className="inline-flex items-center gap-2">
+          <svg width="48" height="10" viewBox="0 0 48 10">
+            <path
+              d="M2 5 L46 5"
+              stroke={TYPE_COLOR[t]}
+              strokeWidth={TYPE_WIDTH[t]}
+              fill="none"
+              strokeDasharray={(TYPE_DASH[t] || []).join(",")}
+            />
+          </svg>
+          <span className="text-gray-700">{t}</span>
+        </span>
+      ))}
     </div>
   );
 }
