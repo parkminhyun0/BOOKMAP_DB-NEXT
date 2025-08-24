@@ -147,9 +147,104 @@ function getLinkEnds(link) {
   return [String(s), String(t)];
 }
 
-/* ⬇️⬇️⬇️ 링크(선) 범례 샘플 컴포넌트
-   - 모듈(파일) 상단에 두면 어디서든 안전하게 사용 가능(호이스팅 문제 회피)
-   - [🛠️ EDIT ME] 선 색/두께/점선 패턴은 CONFIG.LINK_STYLE 에서 통일 관리 */
+/* ─────────────────────────────────────────────────────────────
+   그래프 데이터 모델: 이분 그래프(Book ↔ 속성 노드)
+   - ❗️ 이 함수가 없으면 "buildGraph is not defined" 에러가 납니다.
+   - books 배열(도서 API 결과)을 받아 nodes/links 객체를 만듭니다.
+────────────────────────────────────────────────────────────── */
+function buildGraph(books) {
+  const nodes = [];
+  const links = [];
+  const byId = new Map();
+
+  const addNode = (id, label, type, extra = {}) => {
+    if (byId.has(id)) return byId.get(id);
+    const node = { id, label, type, ...extra };
+    byId.set(id, node);
+    nodes.push(node);
+    return node;
+  };
+
+  for (const b of books) {
+    const bookId = `book:${b.id}`;
+    addNode(bookId, b.title, "book", {
+      bookId: b.id,
+      image: b.image,
+      author: b.author,
+      publisher: b.publisher,
+    });
+
+    if (norm(b.author)) {
+      const id = `저자:${norm(b.author)}`;
+      addNode(id, norm(b.author), "저자");
+      links.push({ source: bookId, target: id, type: "저자" });
+    }
+
+    const tr = norm(b.translator ?? b["역자"]);
+    if (tr) {
+      const id = `역자:${tr}`;
+      addNode(id, tr, "역자");
+      links.push({ source: bookId, target: id, type: "역자" });
+    }
+
+    for (const c of splitList(b.category)) {
+      const id = `카테고리:${c}`;
+      addNode(id, c, "카테고리");
+      links.push({ source: bookId, target: id, type: "카테고리" });
+    }
+
+    for (const s of splitList(b.subject)) {
+      const id = `주제:${s}`;
+      addNode(id, s, "주제");
+      links.push({ source: bookId, target: id, type: "주제" });
+    }
+
+    for (const g of splitList(b.genre)) {
+      const id = `장르:${g}`;
+      addNode(id, g, "장르");
+      links.push({ source: bookId, target: id, type: "장르" });
+    }
+
+    if (norm(b.level)) {
+      const id = `단계:${norm(b.level)}`;
+      addNode(id, norm(b.level), "단계");
+      links.push({ source: bookId, target: id, type: "단계" });
+    }
+
+    const div = normalizeDivision(b.division);
+    if (div) {
+      const id = `구분:${div}`;
+      addNode(id, div, "구분");
+      links.push({ source: bookId, target: id, type: "구분" });
+    }
+  }
+
+  return { nodes, links };
+}
+
+/* ─────────────────────────────────────────────────────────────
+   facet 칩 데이터(필터 칩 용)
+   - ❗️ 이 함수가 없으면 "extractFacetList is not defined" 에러가 납니다.
+────────────────────────────────────────────────────────────── */
+function extractFacetList(books) {
+  const sets = Object.fromEntries(CONFIG.FILTER.TYPES.map((t) => [t, new Set()]));
+  for (const b of books) {
+    splitList(b.category).forEach((v) => sets.카테고리?.add(v));
+    splitList(b.subject).forEach((v) => sets.주제?.add(v));
+    splitList(b.genre).forEach((v) => sets.장르?.add(v));
+    if (norm(b.level)) sets.단계?.add(norm(b.level));
+    const tr = norm(b.translator ?? b["역자"]);
+    if (tr) sets.역자?.add(tr);
+    if (norm(b.author)) sets.저자?.add(norm(b.author));
+    const div = normalizeDivision(b.division);
+    if (div) sets.구분?.add(div);
+  }
+  const sort = (s) => [...s].sort((a, b) => a.localeCompare(b, "ko"));
+  return Object.fromEntries(Object.entries(sets).map(([k, v]) => [k, sort(v)]));
+}
+
+/* ⬇️ 링크(선) 범례 샘플 컴포넌트
+   - [🛠️ EDIT ME] 선 스타일은 CONFIG.LINK_STYLE 에서 통일 관리 */
 function LinkSwatch({ type }) {
   const color = CONFIG.LINK_STYLE.color[type] || "#9ca3af";
   const width = CONFIG.LINK_STYLE.width[type] || 1.5;
@@ -226,8 +321,6 @@ export default function BookMapPage() {
 
   // 필터 적용 그래프
   const { nodes, links } = useMemo(() => {
-    // ※ 그래프가 바뀔 때는 다시 '준비 전' 상태로 두어 스피너가 잠깐 나오게 함
-    //    (아래 useEffect에서 graphReady를 false로 재설정)
     if (tab === "전체") {
       const normalized = baseGraph.links.map((l) => {
         const [s, t] = getLinkEnds(l);
@@ -283,7 +376,6 @@ export default function BookMapPage() {
   // 캔버스 렌더러: 노드(도트 + 라벨)
   const drawNode = (node, ctx, scale) => {
     if (!isNum(node.x) || !isNum(node.y)) return; // 좌표 방어
-
     const isBook = node.type === "book";
     const r = isBook ? 7 : 6;
 
@@ -597,8 +689,6 @@ export default function BookMapPage() {
 export async function getServerSideProps() {
   return { props: {} };
 }
-
-
 
 /* -----------------------------------------------------------------------------
    [🧩 고급] 새 타입 추가 가이드 (예: “시리즈”)
