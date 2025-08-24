@@ -15,6 +15,9 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/router";
 
 import LeftPanel from "@/components/LeftPanel"; // 좌측 패널(공지/NEW BOOK/이벤트)
+/* ⬇️⬇️⬇️ [추가] 로딩 스피너 컴포넌트 임포트 (반드시 상단 import들 사이에) */
+import Loader from "@/components/Loader";
+/* ⬆️⬆️⬆️ Loader는 “스피너 모양 + 안내 문구”를 보여주는 작은 UI 입니다. */
 
 // -----------------------------------------------------------------------------
 // react-force-graph-2d 를 CSR(브라우저에서만) 로드
@@ -263,53 +266,37 @@ export default function BookMapPage() {
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
-// 데이터 가져오기
-useEffect(() => {
-  setErr("");
-  setLoading(true);
-  fetch("/api/books?source=both&prefer=remote")
-    .then(async (r) => {
-      if (!r.ok) throw new Error(`API ${r.status}`);
-      return r.json();
-    })
-    .then((raw) => {
-      const normalized = (raw || []).map((b) => ({
-        ...b,
-        id: b?.id != null ? String(b.id) : null, // id를 문자열로 통일
-      }));
-      setBooks(normalized);
-    })
-    .catch((e) => setErr(e.message || "데이터 로드 실패"))
-    .finally(() => setLoading(false));
-}, []);
+  // [추가] 그래프 물리 엔진 준비 여부 → 스피너 제어에 사용
+  const [graphReady, setGraphReady] = useState(false);
 
-// ✅ 여기! (useEffect 바깥, return 위)
-const LinkSwatch = ({ type }) => {
-  const color = CONFIG.LINK_STYLE.color[type] || "#9ca3af";
-  const width = CONFIG.LINK_STYLE.width[type] || 1.5;
-  const dash  = CONFIG.LINK_STYLE.dash[type]  || [];
-  return (
-    <svg width="52" height="14" className="shrink-0" aria-hidden="true">
-      <line
-        x1="3" y1="7" x2="49" y2="7"
-        stroke={color}
-        strokeWidth={width}
-        strokeDasharray={dash.join(",")}
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-};
+  // 데이터 가져오기 (처음 마운트시에만)
+  useEffect(() => {
+    setErr("");
+    setLoading(true);
+    fetch("/api/books?source=both&prefer=remote")
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`API ${r.status}`);
+        return r.json();
+      })
+      .then((raw) => {
+        const normalized = (raw || []).map((b) => ({
+          ...b,
+          id: b?.id != null ? String(b.id) : null, // id를 문자열로 통일
+        }));
+        setBooks(normalized);
+      })
+      .catch((e) => setErr(e.message || "데이터 로드 실패"))
+      .finally(() => setLoading(false));
+  }, []);
 
   // 전체 그래프/칩
   const baseGraph = useMemo(() => buildGraph(books), [books]);
   const facetChips = useMemo(() => extractFacetList(books), [books]);
 
-  // ---------------------------------------------------------------------------
   // 필터 적용 그래프
-  // ---------------------------------------------------------------------------
   const { nodes, links } = useMemo(() => {
-    // 전체 보기: 링크를 먼저 "문자열 id"로 정규화
+    // ※ 그래프가 바뀔 때는 다시 '준비 전' 상태로 두어 스피너가 잠깐 나올 수 있게 합니다.
+    //    (아래 useEffect에서 graphReady를 false로 재설정합니다.)
     if (tab === "전체") {
       const normalized = baseGraph.links.map((l) => {
         const [s, t] = getLinkEnds(l);
@@ -318,7 +305,6 @@ const LinkSwatch = ({ type }) => {
       return { nodes: baseGraph.nodes, links: normalized };
     }
 
-    // 탭만 선택된 경우: 해당 타입 링크만 유지
     if (!chip) {
       const keepLinks = baseGraph.links.filter((l) => l.type === tab);
       const used = new Set();
@@ -335,7 +321,6 @@ const LinkSwatch = ({ type }) => {
       return { nodes: keepNodes, links: normalized };
     }
 
-    // 칩까지 선택된 경우: attrId와 연결된 링크/노드만
     const attrId = `${tab}:${chip}`;
     const keepLinks = baseGraph.links.filter((l) => {
       if (l.type !== tab) return false;
@@ -356,15 +341,15 @@ const LinkSwatch = ({ type }) => {
     return { nodes: keepNodes, links: normalized };
   }, [baseGraph, tab, chip]);
 
+  // 그래프 내용/필터가 바뀌면 “준비 완료” 상태를 해제 → 엔진 멈추면 다시 true 로 변경
+  useEffect(() => {
+    setGraphReady(false);
+  }, [tab, chip, nodes.length, links.length]);
+
   const nodeCount = nodes.length;
   const linkCount = links.length;
 
-  // ---------------------------------------------------------------------------
   // 캔버스 렌더러: 노드(도트 + 라벨)
-  //  - 색 바꾸기 → CONFIG.NODE_COLOR
-  //  - 반지름 → r
-  //  - 좌표가 준비되지 않았다면(초기화 시점) 그리기 생략 → 런타임 에러 방지
-  // ---------------------------------------------------------------------------
   const drawNode = (node, ctx, scale) => {
     if (!isNum(node.x) || !isNum(node.y)) return; // 좌표 방어
 
@@ -395,11 +380,7 @@ const LinkSwatch = ({ type }) => {
     ctx.fill();
   };
 
-  // ---------------------------------------------------------------------------
   // 캔버스 렌더러: 링크(선)
-  //  - 색/굵기/점선 바꾸기 → CONFIG.LINK_STYLE
-  //  - 끝점 좌표가 안전할 때만 그림
-  // ---------------------------------------------------------------------------
   const drawLink = (l, ctx) => {
     if (!l.source || !l.target || l.source.x == null || l.target.x == null) return;
 
@@ -418,9 +399,7 @@ const LinkSwatch = ({ type }) => {
     ctx.restore();
   };
 
-  // ---------------------------------------------------------------------------
   // 호버/클릭 핸들러
-  // ---------------------------------------------------------------------------
   const handleHover = (node) => {
     if (!isClient || !node || !graphRef.current || !isNum(node.x) || !isNum(node.y)) {
       setHover(null);
@@ -440,10 +419,7 @@ const LinkSwatch = ({ type }) => {
     if (node?.type === "book" && node.bookId) router.push(`/book/${node.bookId}`);
   };
 
-  // ---------------------------------------------------------------------------
   // [🛠️ EDIT ME] 줌/자동 맞춤
-  //  - 데이터/필터 바뀔 때 보기 좋게 화면에 맞춤
-  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!graphRef.current || !width || !height) return;
     const t = setTimeout(() => {
@@ -454,10 +430,7 @@ const LinkSwatch = ({ type }) => {
     return () => clearTimeout(t);
   }, [width, height, nodeCount, linkCount, tab, chip]);
 
-  // ---------------------------------------------------------------------------
   // [🛠️ EDIT ME] 물리 파라미터 주입(d3Force)
-  //  - 링크 길이/강도, 반발력 등을 안전하게 주입
-  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!graphRef.current) return;
     const g = graphRef.current;
@@ -478,9 +451,14 @@ const LinkSwatch = ({ type }) => {
   // 강제 리마운트 키(그래프 내부 상태 초기화용)
   const graphKey = `${tab}|${chip ?? "ALL"}|${nodeCount}|${linkCount}`;
 
-  // ---------------------------------------------------------------------------
+  /* ⬇️⬇️⬇️ [추가] 스피너 표시 여부 계산
+     - loading: API 응답 대기
+     - !isClient: SSR 단계 보호
+     - !graphReady: 엔진이 멈춰서 레이아웃이 안정되기 전 */
+  const showSpinner =
+    loading || !isClient || (!graphReady && (nodes.length > 0 || links.length > 0));
+
   // 렌더
-  // ---------------------------------------------------------------------------
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
@@ -535,38 +513,38 @@ const LinkSwatch = ({ type }) => {
         )}
 
         {/* 간단 범례(노드 색 + 링크 스타일) */}
-<div className="mb-4 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm">
-  {/* 노드(점) 범례 */}
-  <div className="flex flex-wrap items-center gap-5">
-    {[
-      ["도서", "book"], ["저자", "저자"], ["역자", "역자"], ["카테고리", "카테고리"],
-      ["주제", "주제"], ["장르", "장르"], ["단계", "단계"], ["구분", "구분"],
-    ].map(([label, key]) => (
-      <span key={label} className="inline-flex items-center gap-2">
-        <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: CONFIG.NODE_COLOR[key] }} />
-        <span className="text-gray-700">{label}</span>
-      </span>
-    ))}
-  </div>
+        <div className="mb-4 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm">
+          {/* 노드(점) 범례 */}
+          <div className="flex flex-wrap items-center gap-5">
+            {[
+              ["도서", "book"], ["저자", "저자"], ["역자", "역자"], ["카테고리", "카테고리"],
+              ["주제", "주제"], ["장르", "장르"], ["단계", "단계"], ["구분", "구분"],
+            ].map(([label, key]) => (
+              <span key={label} className="inline-flex items-center gap-2">
+                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: CONFIG.NODE_COLOR[key] }} />
+                <span className="text-gray-700">{label}</span>
+              </span>
+            ))}
+          </div>
 
-  {/* ⬇️ 링크(선) 범례 추가 */}
-  <hr className="my-3 border-gray-200" />
-  <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-    {CONFIG.FILTER.TYPES.map((t) => (
-      <span key={t} className="inline-flex items-center gap-2">
-        <LinkSwatch type={t} />
-        <span className="text-gray-700">{t}</span>
-      </span>
-    ))}
-  </div>
+          {/* 링크(선) 범례 */}
+          <hr className="my-3 border-gray-200" />
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            {CONFIG.FILTER.TYPES.map((t) => (
+              <span key={t} className="inline-flex items-center gap-2">
+                {/* ⬇️ 작은 샘플 선(색/굵기/점선은 CONFIG.LINK_STYLE 따라감) */}
+                <LinkSwatch type={t} />
+                <span className="text-gray-700">{t}</span>
+              </span>
+            ))}
+          </div>
 
-  <p className="mt-2 text-xs text-gray-500">
-    도서(파란 점)와 속성 노드가 선으로 연결됩니다. 위 선 범례는
-    <code className="mx-1 rounded bg-gray-100 px-1">CONFIG.LINK_STYLE</code>
-    로 색/굵기/점선을 변경할 수 있습니다(예: 역자·구분은 점선).
-  </p>
-</div>
-
+          {/* ⬇️ 사람 친화적인 문구로 변경(코드 상수 이름 제거) */}
+          <p className="mt-2 text-xs text-gray-500">
+            도서(파란 점)와 속성 노드가 선으로 연결됩니다. 유형(저자·역자·카테고리 등)에 따라
+            선의 색·굵기·점선 패턴이 다릅니다. (예: <span className="underline">역자·구분</span>은 점선)
+          </p>
+        </div>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-7">
           {/* 좌측 패널(공지/NEW BOOK/이벤트) → 내부에서 높이 자동 조절 */}
@@ -582,12 +560,22 @@ const LinkSwatch = ({ type }) => {
               // [🛠️ EDIT ME] 고정 높이 대신 뷰포트 기반 자동 높이
               style={{ minHeight: 520, height: "clamp(520px, calc(100vh - 220px), 900px)", overflow: "hidden" }}
             >
+              {/* ⬇️⬇️⬇️ [추가] 로딩 스피너 오버레이
+                  - showSpinner가 true일 때만 박스를 렌더합니다.
+                  - 흰 배경에 약간의 블러를 줘서 “로딩 중” 상태를 명확히 표시 */}
+              {showSpinner && (
+                <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/65 backdrop-blur-[1px]">
+                  <Loader text="노드 그래픽 뷰 로딩중입니다. 잠시만 기다려주세요" size={22} />
+                </div>
+              )}
+
               {err && (
                 <div className="absolute inset-0 z-10 flex items-center justify-center text-red-600">
                   데이터 로드 오류: {err}
                 </div>
               )}
 
+              {/* 그래프 본체 */}
               {isClient && !loading && (
                 <ForceGraph2D
                   key={graphKey}
@@ -610,8 +598,9 @@ const LinkSwatch = ({ type }) => {
                   backgroundColor="#ffffff"              // 배경 흰색(검은 바 방지)
                   onNodeHover={handleHover}
                   onNodeClick={handleClick}
-                  // 엔진 안정화 뒤 한 번 더 화면 맞춤 → 초기 타이밍 이슈 방지
+                  // ⬇️ 엔진 안정화 뒤: 스피너 닫고, 보기 좋게 화면 맞춤
                   onEngineStop={() => {
+                    setGraphReady(true);
                     try {
                       graphRef.current?.zoomToFit?.(CONFIG.FORCE.autoFitMs, CONFIG.FORCE.autoFitPadding);
                     } catch {}
@@ -619,12 +608,11 @@ const LinkSwatch = ({ type }) => {
                 />
               )}
 
-              {/* [🛠️ EDIT ME] 툴팁 UI (도서 노드에만 표시) */}
+              {/* 툴팁 UI (도서 노드 전용) */}
               {hover?.node && hover.node.type === "book" && (
                 <div
                   className="pointer-events-none absolute z-20 w-56 rounded-xl bg-gray-900/90 p-2 text-white shadow-xl"
                   style={{
-                    // 화면 밖으로 못 나가게 위치 클램프
                     left: Math.max(8, Math.min((hover.x || 0) + 12, (width || 320) - 240)),
                     top: Math.max(8, Math.min((hover.y || 0) - 8, (height || 200) - 140)),
                   }}
@@ -667,3 +655,23 @@ const LinkSwatch = ({ type }) => {
    5) extractFacetList() 에서도 sets.시리즈.add(...) 추가
    끝! 나머지는 자동으로 연동됩니다.
 ----------------------------------------------------------------------------- */
+
+/* ⬇️ 범례에서 쓰이는 작은 선(샘플) 컴포넌트.
+   - 위치는 파일 어디든 가능하지만, 하단에 두면 위쪽 코드가 복잡해지지 않습니다.
+   - 색/굵기/점선은 CONFIG.LINK_STYLE 값을 그대로 따라갑니다. */
+function LinkSwatch({ type }) {
+  const color = CONFIG.LINK_STYLE.color[type] || "#9ca3af";
+  const width = CONFIG.LINK_STYLE.width[type] || 1.5;
+  const dash  = CONFIG.LINK_STYLE.dash[type]  || [];
+  return (
+    <svg width="52" height="14" className="shrink-0" aria-hidden="true">
+      <line
+        x1="3" y1="7" x2="49" y2="7"
+        stroke={color}
+        strokeWidth={width}
+        strokeDasharray={dash.join(",")}
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}

@@ -188,8 +188,9 @@ export default function BookForm() {
     return () => clearInterval(t);
   }, [success, router]);
 
- // ⬇️ 기존 autofillFromIsbn 함수만 이걸로 교체하세요.
+// ⬇️ 기존 autofillFromIsbn 를 "이 코드로 통째로 교체"하세요.
 const autofillFromIsbn = async () => {
+  // 1) ISBN 정리: 하이픈/공백 제거 + 기본 형식 검증
   const clean = isbn.replace(/[^0-9Xx]/g, "");
   if (!/^(\d{10}|\d{13}|(\d{9}[0-9Xx]))$/.test(clean)) {
     setIsbnMsg("ISBN 형식이 올바르지 않습니다.");
@@ -199,7 +200,7 @@ const autofillFromIsbn = async () => {
   setIsbnLoading(true);
   setIsbnMsg("");
 
-  // 통일 스키마의 데이터를 받아 각 필드에 비어 있는 경우만 채워넣는 도우미
+  // 2) 통일 스키마 데이터를 받아 "비어있는 필드만" 채우는 도우미
   const pick = (it) => {
     if (!it) return false;
     if (it.title) setTitle((v)=> v || it.title);
@@ -212,14 +213,14 @@ const autofillFromIsbn = async () => {
   };
 
   try {
-    // ✅ 서버리스 프록시 1회 호출 (서지 → KOLIS 자동 폴백)
-    const r = await fetch(`/api/korlib?provider=auto&q=${encodeURIComponent(clean)}&page=1&size=1`);
+    // 3) 서버리스 프록시 호출 (알라딘 상품조회: ISBN 기반)
+    const r = await fetch(`/api/aladin?isbn=${encodeURIComponent(clean)}`);
     const j = await r.json();
 
     if (Array.isArray(j.items) && j.items.length > 0 && pick(j.items[0])) {
-      setIsbnMsg("ISBN 자동 채움 완료");
+      setIsbnMsg("알라딘 OpenAPI에서 자동 채움 완료");
     } else {
-      setIsbnMsg("해당 ISBN으로 서지정보를 찾지 못했습니다.");
+      setIsbnMsg("해당 ISBN으로 도서를 찾지 못했습니다.");
     }
   } catch (e) {
     console.error(e);
@@ -228,6 +229,7 @@ const autofillFromIsbn = async () => {
     setIsbnLoading(false);
   }
 };
+
 
   // 제출
   const handleSubmit = async (e) => {
