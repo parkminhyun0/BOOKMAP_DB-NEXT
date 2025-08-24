@@ -10,9 +10,10 @@
 
 // ✅ 1) CORS 화이트리스트: 실제 서비스 도메인(https://example.com), 로컬, Vercel 프리뷰 등
 const ALLOWED_ORIGINS = [
-  "http://localhost:3000",             // 로컬 개발
-  "https://yourdomain.com",            // 프로덕션 도메인(예: https://bookmap.xyz)
-  // 필요시 추가…
+  "http://localhost:3000",
+  "https://bookmap-next-3mxsjeoab-bookmaps-projects.vercel.app", // 새 배포 URL
+  // 커스텀 도메인이 있으면 여기도 추가
+  // "https://yourdomain.com",
 ];
 
 // ✅ 선택: Vercel 프리뷰 허용(프로젝트명-랜덤.vercel.app 같은 동적 도메인)

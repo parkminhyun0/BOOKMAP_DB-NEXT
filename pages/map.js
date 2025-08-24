@@ -262,6 +262,10 @@ export default function BookMapPage() {
   // 툴팁(도서 노드 hover)
   const [hover, setHover] = useState(null); // {node, x, y}
 
+  // ✅ [추가] 모바일용 '두 번 탭' 판별을 위해 마지막 탭 기록
+  // - 같은 노드를 빠르게 두 번 탭하면 상세페이지로 이동
+  const [lastTap, setLastTap] = useState({ id: null, ts: 0 });
+
   // CSR 전용 렌더 플래그
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
@@ -400,19 +404,16 @@ export default function BookMapPage() {
   };
 
   // 호버/클릭 핸들러
-  const handleHover = (node) => {
-    if (!isClient || !node || !graphRef.current || !isNum(node.x) || !isNum(node.y)) {
-      setHover(null);
-      return;
-    }
-    const g = graphRef.current;
-    if (typeof g.graph2ScreenCoords !== "function") {
-      setHover(null);
-      return;
-    }
-    const p = g.graph2ScreenCoords(node.x, node.y);
-    setHover({ node, x: p.x, y: p.y });
-  };
+const handleHover = (node) => {
+  // 좌표가 없거나 그래프 참조가 없으면 툴팁 닫기
+  if (!isClient || !node || !graphRef.current || !isNum(node.x) || !isNum(node.y)) {
+    setHover(null);
+    return;
+  }
+  // 스크린 좌표로 변환해서 툴팁 위치 지정
+  const p = graphRef.current.graph2ScreenCoords(node.x, node.y);
+  setHover({ node, x: p.x, y: p.y });
+};
 
   const handleClick = (node) => {
     // 도서 노드만 상세페이지로 이동
