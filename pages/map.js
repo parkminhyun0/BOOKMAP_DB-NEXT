@@ -1,35 +1,34 @@
 // pages/map.js
 // -----------------------------------------------------------------------------
-// ✅ 이 파일에서 자주 고칠 곳만 기억하세요 (모두 검색: [🛠️ EDIT ME])
-//  1) [빠른 설정]         → 색, 점선, 굵기, 좌측 패널 sticky 위치, 그래프 높이/물리감
-//  2) [필터 탭/칩 표시값] → 탭 순서/표시 타입 조정
-//  3) [툴팁 UI]           → 도서 미리보기(이미지/텍스트) 레이아웃
+// ✅ 이 파일에서 자주 고칠 곳만 기억하세요 (검색: [🛠️ EDIT ME])
+//  1) [빠른 설정]         → 색, 점선, 굵기, sticky 위치, 그래프 높이/물리감
+//  2) [필터 탭/칩 표시값] → 탭 순서/표시 타입
+//  3) [툴팁 UI]           → 도서 미리보기 카드 레이아웃
 //  4) [줌/물리 시뮬레이션] → 그래프 움직임/자동 맞춤 느낌(Force 튜닝)
-//  5) [고급] 새 속성 타입 → “시리즈” 같은 새 타입 추가 가이드 맨 아래 참고
+//  5) [고급] 새 속성 타입 → 맨 아래 “새 타입 추가 가이드”
 // -----------------------------------------------------------------------------
 //
-// 🔎 이번 버전의 핵심 수정
-// - 좌측 패널 높이 고정 제거(컴포넌트 내부에서 자동으로 늘어남) → 잘림 해결
-// - 그래프 캔버스 높이를 뷰포트 기반으로 자동 조절 + 배경 흰색 → 스크롤 시 하단 검은 바 제거
-// - d3 물리 파라미터 튜닝(링크 길이/반발력) → 드래그/줌 더 자연스럽게
+// 🔎 이번 수정의 핵심
+// - node/link 캔버스 렌더러/호버 핸들러에 **방어 코드** 추가(좌표가 안전할 때만 그림)
+// - 그래프 준비(onEngineStop) 뒤에만 **zoomToFit** 호출(초기화 타이밍 이슈 회피)
+// - d3Force(distance/charge) 적용도 **존재 확인 + try/catch**로 안전 처리
+// - 컨테이너 높이 **뷰포트 기반 자동 조절**(검은 바/잘림 방지)
+// - 좌측 패널은 컴포넌트 내부에서 높이 **자동**(book/map 페이지 모두 동일 사용)
 //
 // -----------------------------------------------------------------------------
-// eslint 경고: <img> 사용 경고가 거슬리면 아래 한 줄 유지, 싫으면 삭제해도 됩니다.
- /* eslint-disable @next/next/no-img-element */
+// eslint 경고: <img> 사용 경고가 거슬리면 유지, 싫으면 삭제해도 됩니다.
+/* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";            // ⚠️ 한 파일에 한 번만 import (중복 금지)
 import { useRouter } from "next/router";
 
-// 공용 좌측 패널(공지 / NEW BOOK 슬라이드 / 이벤트)
-//  - 내용/스타일은 components/LeftPanel.jsx 한 곳에서 관리 → book/map 양쪽에 자동 반영
-import LeftPanel from "@/components/LeftPanel";
-// import Loader from "@/components/Loader";    // 필요 시 주석 해제 후 사용
+import LeftPanel from "@/components/LeftPanel"; // 공용 좌측 패널(공지/NEW BOOK/이벤트)
+// import Loader from "@/components/Loader";    // 필요 시 주석 해제
 
 /* ─────────────────────────────────────────────────────────────
    ForceGraph2D(react-force-graph-2d) 를 CSR(브라우저에서만) 로드
-   - Next.js SSR 단계(window 없음)에서 생기는 에러를 막기 위해 ssr:false
-   - 로딩 동안 가운데 “그래프 초기화…” 문구 표시
+   - SSR(window 없음) 단계에서 생기는 에러를 막기 위해 ssr:false
 ────────────────────────────────────────────────────────────── */
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
   ssr: false,
@@ -41,11 +40,11 @@ const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
 });
 
 /* ─────────────────────────────────────────────────────────────
-   [🛠️ EDIT ME] 빠른 설정 (여기만 바꿔도 대부분 조절 가능)
+   [🛠️ EDIT ME] 빠른 설정
+   - 이 블록만 바꿔도 대부분의 스타일/거동을 조절할 수 있습니다.
 ────────────────────────────────────────────────────────────── */
 const CONFIG = {
-  // 좌측 패널 sticky 기준. 페이지 상단 네비 높이에 맞게 조정하세요.
-  //  ex) 네비 높이가 커지면 96 → 120 같은 식으로
+  // 좌측 패널 sticky 기준(상단 네비 높이에 맞춰 조절)
   STICKY_TOP: 96,
 
   // 그래프 인터랙션/시뮬레이션(움직임 느낌)
@@ -55,13 +54,13 @@ const CONFIG = {
     autoFitPadding: 40,
 
     // d3 물리(전체적 거동)
-    cooldownTime: 1500,      // 엔진이 식는 시간(ms) — 값↑ 오래움직임(느긋)
-    d3VelocityDecay: 0.35,   // 감속 — 값↑ 빨리 멈춤(차분), 값↓ 오래 관성
-    d3AlphaMin: 0.001,       // 수렴 임계치 — 값↓ 더 오래 연산
+    cooldownTime: 1500,      // 엔진이 식는 시간(ms) — 값↑ 오래움직임, 값↓ 빨리 멈춤
+    d3VelocityDecay: 0.35,   // 감속 — 값↑ 빨리 멈춤(차분), 값↓ 관성 큼
+    d3AlphaMin: 0.001,       // 수렴 임계 — 값↓ 더 오래 연산
 
-    // 링크/반발 개별 튜닝 (아래 useEffect에서 주입)
-    linkDistance: 48,        // 링크 기본 거리 — 값↑ 노드 간격 넓어짐
-    chargeStrength: -220,    // 반발(음수) — 절댓값↑ 서로 더 멀리 밀어냄
+    // 링크/반발 개별 튜닝(아래 useEffect에서 주입)
+    linkDistance: 52,        // 링크 기본 거리 — 값↑ 노드 간격 넓어짐
+    chargeStrength: -240,    // 반발(음수) — 절댓값↑ 서로 더 밀어냄
   },
 
   /* 노드 타입별 색상 — “book”은 도서 노드 전용 키(고정) */
@@ -107,7 +106,7 @@ const CONFIG = {
     },
   },
 
-  /* [🛠️ EDIT ME] 필터 탭에 보여줄 타입 순서 */
+  /* [🛠️ EDIT ME] 필터 탭 노출 순서 */
   FILTER: { TYPES: ["카테고리", "단계", "저자", "역자", "주제", "장르", "구분"] },
 };
 
@@ -115,17 +114,17 @@ const CONFIG = {
    유틸 (문자 정리 / 배열 스플릿 / 컨테이너 실측 등)
 ────────────────────────────────────────────────────────────── */
 const norm = (v) => String(v ?? "").trim();
+const isNum = (v) => Number.isFinite(v); // 좌표/수치 안전 검사
 
 function splitList(input) {
   if (!input) return [];
   let s = String(input);
-  // 슬래시/점 등의 구분자를 쉼표로 통일
+  // 다양한 구분자를 쉼표로 통일
   s = s.replace(/[\/|·•]/g, ",").replace(/[，、・／]/g, ",");
   return s.split(",").map((t) => t.trim()).filter(Boolean);
 }
 
 function normalizeDivision(v) {
-  // “원서/번역서/국내서/국외서(해외)”를 간단히 통일
   const s = norm(v);
   if (!s) return "";
   if (s.includes("번역")) return "번역서";
@@ -152,15 +151,12 @@ function useSize(ref) {
 
 /* ─────────────────────────────────────────────────────────────
    그래프 데이터 모델: 이분 그래프(Book ↔ 속성 노드)
-   - 도서(book)와 속성(저자/역자/카테고리/주제/장르/단계/구분) 연결
-   - 같은 속성 값을 공유하면 도서가 해당 속성 노드에 연결
 ────────────────────────────────────────────────────────────── */
 function buildGraph(books) {
   const nodes = [];
   const links = [];
   const byId = new Map();
 
-  // 중복 방지용 노드 추가 함수
   const addNode = (id, label, type, extra = {}) => {
     if (byId.has(id)) return byId.get(id);
     const node = { id, label, type, ...extra };
@@ -271,7 +267,7 @@ export default function BookMapPage() {
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
-  // 데이터 가져오기 (API는 /api/books?source=both&prefer=remote)
+  // 데이터 가져오기
   useEffect(() => {
     setErr("");
     setLoading(true);
@@ -283,7 +279,7 @@ export default function BookMapPage() {
       .then((raw) => {
         const normalized = (raw || []).map((b) => ({
           ...b,
-          id: b?.id != null ? String(b.id) : null, // id를 문자열로 통일(그래프 키 안정화)
+          id: b?.id != null ? String(b.id) : null, // id를 문자열로 통일
         }));
         setBooks(normalized);
       })
@@ -326,8 +322,11 @@ export default function BookMapPage() {
      캔버스 렌더러: 노드(도트 + 라벨)
      - 색 바꾸기 → CONFIG.NODE_COLOR
      - 반지름 바꾸기 → r 값
+     - ✅ 좌표가 준비되지 않았다면(초기화 시점) 그리기 생략 → 런타임 에러 방지
   ─────────────────────────────────────────────────────────── */
   const drawNode = (node, ctx, scale) => {
+    if (!isNum(node.x) || !isNum(node.y)) return; // 🔒 좌표 방어
+
     const isBook = node.type === "book";
     const r = isBook ? 7 : 6;
 
@@ -339,6 +338,7 @@ export default function BookMapPage() {
 
     // 라벨
     const label = node.label || "";
+    // 글자 크기를 확대/축소 비율(scale)에 완만히 반응
     ctx.font = `${Math.max(10, 12 / Math.pow(scale, 0.15))}px ui-sans-serif,-apple-system,BlinkMacSystemFont`;
     ctx.textBaseline = "middle";
     ctx.fillStyle = "#374151";
@@ -347,6 +347,7 @@ export default function BookMapPage() {
 
   // 포인터 히트영역(드래그/호버 감지 넉넉히)
   const nodePointerAreaPaint = (node, color, ctx) => {
+    if (!isNum(node.x) || !isNum(node.y)) return; // 🔒 좌표 방어
     const r = node.type === "book" ? 11 : 10;
     ctx.fillStyle = color;
     ctx.beginPath();
@@ -357,8 +358,13 @@ export default function BookMapPage() {
   /* ─────────────────────────────────────────────────────────
      캔버스 렌더러: 링크(선)
      - 색/굵기/점선 바꾸기 → CONFIG.LINK_STYLE
+     - ✅ 끝점 좌표가 안전할 때만 그림
   ─────────────────────────────────────────────────────────── */
   const drawLink = (l, ctx) => {
+    const s = l.source;
+    const t = l.target;
+    if (!s || !t || !isNum(s.x) || !isNum(s.y) || !isNum(t.x) || !isNum(t.y)) return; // 🔒 방어
+
     const c = CONFIG.LINK_STYLE.color[l.type] || "#9ca3af";
     const w = CONFIG.LINK_STYLE.width[l.type] || 1.5;
     const d = CONFIG.LINK_STYLE.dash[l.type] || [];
@@ -368,18 +374,27 @@ export default function BookMapPage() {
     ctx.lineWidth = w;
     if (d.length) ctx.setLineDash(d);
     ctx.beginPath();
-    ctx.moveTo(l.source.x, l.source.y);
-    ctx.lineTo(l.target.x, l.target.y);
+    ctx.moveTo(s.x, s.y);
+    ctx.lineTo(t.x, t.y);
     ctx.stroke();
     ctx.restore();
   };
 
   /* ─────────────────────────────────────────────────────────
      호버/클릭
+     - ✅ graph2ScreenCoords 호출 전 준비 여부 체크
   ─────────────────────────────────────────────────────────── */
   const handleHover = (node) => {
-    if (!isClient || !node || !graphRef.current) return setHover(null);
-    const p = graphRef.current.graph2ScreenCoords(node.x, node.y);
+    if (!isClient || !node || !graphRef.current || !isNum(node.x) || !isNum(node.y)) {
+      setHover(null);
+      return;
+    }
+    const g = graphRef.current;
+    if (typeof g.graph2ScreenCoords !== "function") {
+      setHover(null);
+      return;
+    }
+    const p = g.graph2ScreenCoords(node.x, node.y);
     setHover({ node, x: p.x, y: p.y });
   };
 
@@ -391,6 +406,7 @@ export default function BookMapPage() {
   /* ─────────────────────────────────────────────────────────
      [🛠️ EDIT ME] 줌/자동 맞춤
      - 데이터/필터가 바뀔 때 보기 좋게 화면에 맞춤
+     - ✅ onEngineStop(엔진 준비 완료)에 맞춰 1회 더 맞춤(초기화 타이밍 이슈 방지)
   ─────────────────────────────────────────────────────────── */
   useEffect(() => {
     if (!graphRef.current || !width || !height) return;
@@ -405,18 +421,21 @@ export default function BookMapPage() {
   /* ─────────────────────────────────────────────────────────
      [🛠️ EDIT ME] 물리 파라미터 세부 튜닝
      - 링크 길이/강도, 반발력 등을 여기서 주입합니다.
-     - 값이 과하면 노드가 너무 퍼지거나 덜 퍼질 수 있으니 조금씩 조절하세요.
   ─────────────────────────────────────────────────────────── */
   useEffect(() => {
     if (!graphRef.current) return;
     const g = graphRef.current;
-    // 링크: 거리/강도
-    if (g.d3Force("link")) {
-      g.d3Force("link").distance(CONFIG.FORCE.linkDistance).strength(0.9);
-    }
-    // 반발력(음수값): 절댓값이 커질수록 서로 밀어냄
-    if (g.d3Force("charge")) {
-      g.d3Force("charge").strength(CONFIG.FORCE.chargeStrength);
+    try {
+      const lf = g.d3Force && g.d3Force("link");
+      if (lf && typeof lf.distance === "function") {
+        lf.distance(CONFIG.FORCE.linkDistance).strength(0.9);
+      }
+      const ch = g.d3Force && g.d3Force("charge");
+      if (ch && typeof ch.strength === "function") {
+        ch.strength(CONFIG.FORCE.chargeStrength);
+      }
+    } catch {
+      // d3Force 준비 전 호출될 경우를 대비한 방어
     }
   }, [nodeCount, linkCount]);
 
@@ -496,16 +515,13 @@ export default function BookMapPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-7">
-          {/* 좌측: 공용 컴포넌트 재사용(공지/NEW BOOK 슬라이드/이벤트)
-              → LeftPanel 내부에서 높이를 '자동'으로 처리합니다(잘림 없음). */}
+          {/* 좌측: 공용 컴포넌트(공지/NEW BOOK/이벤트) → 내부에서 높이 자동 조절 */}
           <aside className="hidden md:col-span-2 md:block">
             <LeftPanel
               books={books}
               stickyTop={CONFIG.STICKY_TOP}
               // height는 전달하지 않습니다(컴포넌트가 자동 조절).
-              slideAutoMs={2000}
-              itemsPerPage={2}
-              maxPages={5}
+              // [🛠️ EDIT ME] NEW BOOK 슬라이드 속도/개수는 LeftPanel.jsx 상단 상수로 조절
             />
           </aside>
 
@@ -515,11 +531,9 @@ export default function BookMapPage() {
               ref={wrapRef}
               className="relative rounded-2xl border border-gray-200 bg-white"
               // ✅ 고정 640px 대신, 뷰포트 기반 자동 높이
-              // - minHeight: 너무 작지 않게(520px)
-              // - height: 화면 높이에서 헤더·여백 등을 뺀 값(대략적 220px)
-              //   → 페이지 길이에 따라 자연스럽게 확장되고,
-              //     투명 캔버스로 인한 '검은 바' 현상도 방지합니다.
-              style={{ minHeight: 520, height: "min(900px, calc(100vh - 220px))", overflow: "hidden" }}
+              //  - minHeight: 너무 작지 않게(520px)
+              //  - height   : 화면 높이에 따라 유동(검은 바/잘림 방지)
+              style={{ minHeight: 520, height: "clamp(520px, calc(100vh - 220px), 900px)", overflow: "hidden" }}
             >
               {err && (
                 <div className="absolute inset-0 z-10 flex items-center justify-center text-red-600">
@@ -546,10 +560,15 @@ export default function BookMapPage() {
                   cooldownTime={CONFIG.FORCE.cooldownTime}
                   d3VelocityDecay={CONFIG.FORCE.d3VelocityDecay}
                   d3AlphaMin={CONFIG.FORCE.d3AlphaMin}
-                  // 배경을 흰색으로 고정(투명 → 검은 바 방지)
-                  backgroundColor="#ffffff"
+                  backgroundColor="#ffffff"              // 배경 흰색(검은 바 방지)
                   onNodeHover={handleHover}
                   onNodeClick={handleClick}
+                  // 엔진이 안정화된 뒤 한 번 더 화면 맞춤 → 초기 타이밍 이슈 방지
+                  onEngineStop={() => {
+                    try {
+                      graphRef.current?.zoomToFit?.(CONFIG.FORCE.autoFitMs, CONFIG.FORCE.autoFitPadding);
+                    } catch {}
+                  }}
                 />
               )}
 
