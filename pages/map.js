@@ -7,29 +7,19 @@
 //  4) [줌/물리 시뮬레이션] → 그래프 움직임/자동 맞춤 느낌(Force 튜닝)
 //  5) [고급] 새 속성 타입 → 맨 아래 “새 타입 추가 가이드”
 // -----------------------------------------------------------------------------
-//
-// 🔎 이번 수정의 핵심
-// - node/link 캔버스 렌더러/호버 핸들러에 **방어 코드** 추가(좌표가 안전할 때만 그림)
-// - 그래프 준비(onEngineStop) 뒤에만 **zoomToFit** 호출(초기화 타이밍 이슈 회피)
-// - d3Force(distance/charge) 적용도 **존재 확인 + try/catch**로 안전 처리
-// - 컨테이너 높이 **뷰포트 기반 자동 조절**(검은 바/잘림 방지)
-// - 좌측 패널은 컴포넌트 내부에서 높이 **자동**(book/map 페이지 모두 동일 사용)
-//
-// -----------------------------------------------------------------------------
-// eslint 경고: <img> 사용 경고가 거슬리면 유지, 싫으면 삭제해도 됩니다.
-/* eslint-disable @next/next/no-img-element */
+
+/* eslint-disable @next/next/no-img-element */ // <img> 경고 숨기기(원하면 제거)
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import dynamic from "next/dynamic";            // ⚠️ 한 파일에 한 번만 import (중복 금지)
+import dynamic from "next/dynamic";
 import { useRouter } from "next/router";
 
-import LeftPanel from "@/components/LeftPanel"; // 공용 좌측 패널(공지/NEW BOOK/이벤트)
-// import Loader from "@/components/Loader";    // 필요 시 주석 해제
+import LeftPanel from "@/components/LeftPanel"; // 좌측 패널(공지/NEW BOOK/이벤트)
 
-/* ─────────────────────────────────────────────────────────────
-   ForceGraph2D(react-force-graph-2d) 를 CSR(브라우저에서만) 로드
-   - SSR(window 없음) 단계에서 생기는 에러를 막기 위해 ssr:false
-────────────────────────────────────────────────────────────── */
+// -----------------------------------------------------------------------------
+// react-force-graph-2d 를 CSR(브라우저에서만) 로드
+// - Next.js SSR 단계(window 없음)에서 에러 방지: ssr:false
+// -----------------------------------------------------------------------------
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
   ssr: false,
   loading: () => (
@@ -39,43 +29,42 @@ const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
   ),
 });
 
-/* ─────────────────────────────────────────────────────────────
-   [🛠️ EDIT ME] 빠른 설정
-   - 이 블록만 바꿔도 대부분의 스타일/거동을 조절할 수 있습니다.
-────────────────────────────────────────────────────────────── */
+// -----------------------------------------------------------------------------
+// [🛠️ EDIT ME] 빠른 설정
+// -----------------------------------------------------------------------------
 const CONFIG = {
   // 좌측 패널 sticky 기준(상단 네비 높이에 맞춰 조절)
   STICKY_TOP: 96,
 
   // 그래프 인터랙션/시뮬레이션(움직임 느낌)
   FORCE: {
-    // 자동 맞춤(zoomToFit) 애니메이션 시간(ms)과 여백(px)
+    // 자동 맞춤(zoomToFit) 애니메이션 시간/여백
     autoFitMs: 600,
     autoFitPadding: 40,
 
-    // d3 물리(전체적 거동)
-    cooldownTime: 1500,      // 엔진이 식는 시간(ms) — 값↑ 오래움직임, 값↓ 빨리 멈춤
-    d3VelocityDecay: 0.35,   // 감속 — 값↑ 빨리 멈춤(차분), 값↓ 관성 큼
-    d3AlphaMin: 0.001,       // 수렴 임계 — 값↓ 더 오래 연산
+    // d3 물리 (전체 거동)
+    cooldownTime: 1500,    // 값↑ 오래 움직임, 값↓ 빨리 멈춤
+    d3VelocityDecay: 0.35, // 값↑ 감속 큼(차분), 값↓ 관성 큼
+    d3AlphaMin: 0.001,
 
-    // 링크/반발 개별 튜닝(아래 useEffect에서 주입)
-    linkDistance: 52,        // 링크 기본 거리 — 값↑ 노드 간격 넓어짐
-    chargeStrength: -240,    // 반발(음수) — 절댓값↑ 서로 더 밀어냄
+    // 링크/반발 세부 튜닝 (useEffect에서 주입)
+    linkDistance: 52,      // 값↑ 노드 간격 넓어짐
+    chargeStrength: -240,  // 음수(반발) 절댓값↑ 더 밀어냄
   },
 
-  /* 노드 타입별 색상 — “book”은 도서 노드 전용 키(고정) */
+  // 노드 타입별 색상 — “book”은 도서 노드 전용 키(고정)
   NODE_COLOR: {
-    book: "#2563eb",     // 도서(파랑)
-    저자: "#16a34a",     // 초록
-    역자: "#0ea5e9",     // 하늘
-    카테고리: "#f59e0b", // 주황
-    주제: "#a855f7",     // 보라
-    장르: "#1d4ed8",     // 진파랑
-    단계: "#f97316",     // 오렌지
-    구분: "#ef4444",     // 빨강
+    book: "#2563eb",
+    저자: "#16a34a",
+    역자: "#0ea5e9",
+    카테고리: "#f59e0b",
+    주제: "#a855f7",
+    장르: "#1d4ed8",
+    단계: "#f97316",
+    구분: "#ef4444",
   },
 
-  /* 링크(연결선) 스타일 — 타입별 색/두께/점선 패턴 */
+  // 링크(연결선) 스타일 — 타입별 색/두께/점선
   LINK_STYLE: {
     color: {
       카테고리: "#a855f7",
@@ -106,15 +95,15 @@ const CONFIG = {
     },
   },
 
-  /* [🛠️ EDIT ME] 필터 탭 노출 순서 */
+  // [🛠️ EDIT ME] 필터 탭 노출 순서
   FILTER: { TYPES: ["카테고리", "단계", "저자", "역자", "주제", "장르", "구분"] },
 };
 
-/* ─────────────────────────────────────────────────────────────
-   유틸 (문자 정리 / 배열 스플릿 / 컨테이너 실측 등)
-────────────────────────────────────────────────────────────── */
+// -----------------------------------------------------------------------------
+// 유틸 함수/훅(문자 정리 / 배열 스플릿 / 컨테이너 실측 등)
+// -----------------------------------------------------------------------------
 const norm = (v) => String(v ?? "").trim();
-const isNum = (v) => Number.isFinite(v); // 좌표/수치 안전 검사
+const isNum = (v) => Number.isFinite(v);
 
 function splitList(input) {
   if (!input) return [];
@@ -134,7 +123,7 @@ function normalizeDivision(v) {
   return s;
 }
 
-// 그래프 컨테이너의 실제 렌더 크기 측정(반응형)
+// 반응형: 컨테이너 실제 렌더 크기 측정
 function useSize(ref) {
   const [sz, setSz] = useState({ width: 0, height: 0 });
   useEffect(() => {
@@ -156,11 +145,9 @@ function getLinkEnds(link) {
   return [String(s), String(t)];
 }
 
-
-
-/* ─────────────────────────────────────────────────────────────
-   그래프 데이터 모델: 이분 그래프(Book ↔ 속성 노드)
-────────────────────────────────────────────────────────────── */
+// -----------------------------------------------------------------------------
+// 그래프 데이터 모델: 이분 그래프(Book ↔ 속성 노드)
+// -----------------------------------------------------------------------------
 function buildGraph(books) {
   const nodes = [];
   const links = [];
@@ -231,7 +218,7 @@ function buildGraph(books) {
   return { nodes, links };
 }
 
-/* facet 칩 목록(필터 칩용 데이터) */
+// facet 칩 데이터(필터 칩 용)
 function extractFacetList(books) {
   const sets = Object.fromEntries(CONFIG.FILTER.TYPES.map((t) => [t, new Set()]));
   for (const b of books) {
@@ -249,9 +236,9 @@ function extractFacetList(books) {
   return Object.fromEntries(Object.entries(sets).map(([k, v]) => [k, sort(v)]));
 }
 
-/* ─────────────────────────────────────────────────────────────
-   페이지 컴포넌트
-────────────────────────────────────────────────────────────── */
+// -----------------------------------------------------------------------------
+// 페이지 컴포넌트
+// -----------------------------------------------------------------------------
 export default function BookMapPage() {
   const router = useRouter();
 
@@ -269,7 +256,7 @@ export default function BookMapPage() {
   const { width, height } = useSize(wrapRef);
   const graphRef = useRef(null);
 
-  // 툴팁(도서 노드에 hover 시)
+  // 툴팁(도서 노드 hover)
   const [hover, setHover] = useState(null); // {node, x, y}
 
   // CSR 전용 렌더 플래그
@@ -300,81 +287,68 @@ export default function BookMapPage() {
   const baseGraph = useMemo(() => buildGraph(books), [books]);
   const facetChips = useMemo(() => extractFacetList(books), [books]);
 
-// ─────────────────────────────────────────────────────────────
-// 필터 적용 그래프
-const { nodes, links } = useMemo(() => {
-  // 전체 보기: 링크를 먼저 "문자열 id"로 정규화
-  if (tab === "전체") {
-    const normalized = baseGraph.links.map((l) => {
+  // ---------------------------------------------------------------------------
+  // 필터 적용 그래프
+  // ---------------------------------------------------------------------------
+  const { nodes, links } = useMemo(() => {
+    // 전체 보기: 링크를 먼저 "문자열 id"로 정규화
+    if (tab === "전체") {
+      const normalized = baseGraph.links.map((l) => {
+        const [s, t] = getLinkEnds(l);
+        return { ...l, source: s, target: t };
+      });
+      return { nodes: baseGraph.nodes, links: normalized };
+    }
+
+    // 탭만 선택된 경우: 해당 타입 링크만 유지
+    if (!chip) {
+      const keepLinks = baseGraph.links.filter((l) => l.type === tab);
+      const used = new Set();
+      keepLinks.forEach((l) => {
+        const [s, t] = getLinkEnds(l);
+        used.add(s);
+        used.add(t);
+      });
+      const keepNodes = baseGraph.nodes.filter((n) => used.has(n.id));
+      const normalized = keepLinks.map((l) => {
+        const [s, t] = getLinkEnds(l);
+        return { ...l, source: s, target: t };
+      });
+      return { nodes: keepNodes, links: normalized };
+    }
+
+    // 칩까지 선택된 경우: attrId와 연결된 링크/노드만
+    const attrId = `${tab}:${chip}`;
+    const keepLinks = baseGraph.links.filter((l) => {
+      if (l.type !== tab) return false;
       const [s, t] = getLinkEnds(l);
-      return { ...l, source: s, target: t };
+      return s === attrId || t === attrId;
     });
-    return { nodes: baseGraph.nodes, links: normalized };
-  }
-
-  // 탭만 선택된 경우: 해당 타입 링크만 유지
-  if (!chip) {
-    const keepLinks = baseGraph.links.filter((l) => l.type === tab);
-
-    // 링크에서 쓰인 끝점 id 수집(문자열)
-    const used = new Set();
+    const used = new Set([attrId]);
     keepLinks.forEach((l) => {
       const [s, t] = getLinkEnds(l);
       used.add(s);
       used.add(t);
     });
-
-    // 사용된 id에 해당하는 노드만 남김
     const keepNodes = baseGraph.nodes.filter((n) => used.has(n.id));
-
-    // 링크는 문자열 id로 정규화
     const normalized = keepLinks.map((l) => {
       const [s, t] = getLinkEnds(l);
       return { ...l, source: s, target: t };
     });
-
     return { nodes: keepNodes, links: normalized };
-  }
-
-  // 칩까지 선택된 경우: attrId와 연결된 링크/노드만
-  const attrId = `${tab}:${chip}`;
-
-  const keepLinks = baseGraph.links.filter((l) => {
-    if (l.type !== tab) return false;
-    const [s, t] = getLinkEnds(l);
-    return s === attrId || t === attrId;
-  });
-
-  const used = new Set([attrId]);
-  keepLinks.forEach((l) => {
-    const [s, t] = getLinkEnds(l);
-    used.add(s);
-    used.add(t);
-  });
-
-  const keepNodes = baseGraph.nodes.filter((n) => used.has(n.id));
-
-  const normalized = keepLinks.map((l) => {
-    const [s, t] = getLinkEnds(l);
-    return { ...l, source: s, target: t };
-  });
-
-  return { nodes: keepNodes, links: normalized };
-}, [baseGraph, tab, chip]);
-
-
+  }, [baseGraph, tab, chip]);
 
   const nodeCount = nodes.length;
   const linkCount = links.length;
-  ─────────────────────────────────────────────────────────── */
-  /* ─────────────────────────────────────────────────────────
-     캔버스 렌더러: 노드(도트 + 라벨)
-     - 색 바꾸기 → CONFIG.NODE_COLOR
-     - 반지름 바꾸기 → r 값
-     - ✅ 좌표가 준비되지 않았다면(초기화 시점) 그리기 생략 → 런타임 에러 방지
-  ─────────────────────────────────────────────────────────── */
+
+  // ---------------------------------------------------------------------------
+  // 캔버스 렌더러: 노드(도트 + 라벨)
+  //  - 색 바꾸기 → CONFIG.NODE_COLOR
+  //  - 반지름 → r
+  //  - 좌표가 준비되지 않았다면(초기화 시점) 그리기 생략 → 런타임 에러 방지
+  // ---------------------------------------------------------------------------
   const drawNode = (node, ctx, scale) => {
-    if (!isNum(node.x) || !isNum(node.y)) return; // 🔒 좌표 방어
+    if (!isNum(node.x) || !isNum(node.y)) return; // 좌표 방어
 
     const isBook = node.type === "book";
     const r = isBook ? 7 : 6;
@@ -387,16 +361,15 @@ const { nodes, links } = useMemo(() => {
 
     // 라벨
     const label = node.label || "";
-    // 글자 크기를 확대/축소 비율(scale)에 완만히 반응
     ctx.font = `${Math.max(10, 12 / Math.pow(scale, 0.15))}px ui-sans-serif,-apple-system,BlinkMacSystemFont`;
     ctx.textBaseline = "middle";
     ctx.fillStyle = "#374151";
     ctx.fillText(label, node.x + r + 6, node.y);
   };
 
-  // 포인터 히트영역(드래그/호버 감지 넉넉히)
+  // 드래그/호버 감지 범위(조금 넓게)
   const nodePointerAreaPaint = (node, color, ctx) => {
-    if (!isNum(node.x) || !isNum(node.y)) return; // 🔒 좌표 방어
+    if (!isNum(node.x) || !isNum(node.y)) return;
     const r = node.type === "book" ? 11 : 10;
     ctx.fillStyle = color;
     ctx.beginPath();
@@ -404,17 +377,32 @@ const { nodes, links } = useMemo(() => {
     ctx.fill();
   };
 
-  /* ─────────────────────────────────────────────────────────
-     캔버스 렌더러: 링크(선)
-     - 색/굵기/점선 바꾸기 → CONFIG.LINK_STYLE
-     - ✅ 끝점 좌표가 안전할 때만 그림
-  ─────────────────────────────────────────────────────────── */
-const drawLink = (l, ctx) => {
+  // ---------------------------------------------------------------------------
+  // 캔버스 렌더러: 링크(선)
+  //  - 색/굵기/점선 바꾸기 → CONFIG.LINK_STYLE
+  //  - 끝점 좌표가 안전할 때만 그림
+  // ---------------------------------------------------------------------------
+  const drawLink = (l, ctx) => {
+    if (!l.source || !l.target || l.source.x == null || l.target.x == null) return;
 
-  /* ─────────────────────────────────────────────────────────
-     호버/클릭
-     - ✅ graph2ScreenCoords 호출 전 준비 여부 체크
-  ─────────────────────────────────────────────────────────── */
+    const c = CONFIG.LINK_STYLE.color[l.type] || "#9ca3af";
+    const w = CONFIG.LINK_STYLE.width[l.type] || 1.5;
+    const d = CONFIG.LINK_STYLE.dash[l.type] || [];
+
+    ctx.save();
+    ctx.strokeStyle = c;
+    ctx.lineWidth = w;
+    if (d.length) ctx.setLineDash(d);
+    ctx.beginPath();
+    ctx.moveTo(l.source.x, l.source.y);
+    ctx.lineTo(l.target.x, l.target.y);
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  // ---------------------------------------------------------------------------
+  // 호버/클릭 핸들러
+  // ---------------------------------------------------------------------------
   const handleHover = (node) => {
     if (!isClient || !node || !graphRef.current || !isNum(node.x) || !isNum(node.y)) {
       setHover(null);
@@ -434,11 +422,10 @@ const drawLink = (l, ctx) => {
     if (node?.type === "book" && node.bookId) router.push(`/book/${node.bookId}`);
   };
 
-  /* ─────────────────────────────────────────────────────────
-     [🛠️ EDIT ME] 줌/자동 맞춤
-     - 데이터/필터가 바뀔 때 보기 좋게 화면에 맞춤
-     - ✅ onEngineStop(엔진 준비 완료)에 맞춰 1회 더 맞춤(초기화 타이밍 이슈 방지)
-  ─────────────────────────────────────────────────────────── */
+  // ---------------------------------------------------------------------------
+  // [🛠️ EDIT ME] 줌/자동 맞춤
+  //  - 데이터/필터 바뀔 때 보기 좋게 화면에 맞춤
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!graphRef.current || !width || !height) return;
     const t = setTimeout(() => {
@@ -449,10 +436,10 @@ const drawLink = (l, ctx) => {
     return () => clearTimeout(t);
   }, [width, height, nodeCount, linkCount, tab, chip]);
 
-  /* ─────────────────────────────────────────────────────────
-     [🛠️ EDIT ME] 물리 파라미터 세부 튜닝
-     - 링크 길이/강도, 반발력 등을 여기서 주입합니다.
-  ─────────────────────────────────────────────────────────── */
+  // ---------------------------------------------------------------------------
+  // [🛠️ EDIT ME] 물리 파라미터 주입(d3Force)
+  //  - 링크 길이/강도, 반발력 등을 안전하게 주입
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!graphRef.current) return;
     const g = graphRef.current;
@@ -466,13 +453,16 @@ const drawLink = (l, ctx) => {
         ch.strength(CONFIG.FORCE.chargeStrength);
       }
     } catch {
-      // d3Force 준비 전 호출될 경우를 대비한 방어
+      // d3Force 준비 전 호출될 경우 대비
     }
   }, [nodeCount, linkCount]);
 
   // 강제 리마운트 키(그래프 내부 상태 초기화용)
   const graphKey = `${tab}|${chip ?? "ALL"}|${nodeCount}|${linkCount}`;
 
+  // ---------------------------------------------------------------------------
+  // 렌더
+  // ---------------------------------------------------------------------------
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
@@ -546,14 +536,9 @@ const drawLink = (l, ctx) => {
         </div>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-7">
-          {/* 좌측: 공용 컴포넌트(공지/NEW BOOK/이벤트) → 내부에서 높이 자동 조절 */}
+          {/* 좌측 패널(공지/NEW BOOK/이벤트) → 내부에서 높이 자동 조절 */}
           <aside className="hidden md:col-span-2 md:block">
-            <LeftPanel
-              books={books}
-              stickyTop={CONFIG.STICKY_TOP}
-              // height는 전달하지 않습니다(컴포넌트가 자동 조절).
-              // [🛠️ EDIT ME] NEW BOOK 슬라이드 속도/개수는 LeftPanel.jsx 상단 상수로 조절
-            />
+            <LeftPanel books={books} stickyTop={CONFIG.STICKY_TOP} />
           </aside>
 
           {/* 그래프 영역 */}
@@ -561,9 +546,7 @@ const drawLink = (l, ctx) => {
             <div
               ref={wrapRef}
               className="relative rounded-2xl border border-gray-200 bg-white"
-              // ✅ 고정 640px 대신, 뷰포트 기반 자동 높이
-              //  - minHeight: 너무 작지 않게(520px)
-              //  - height   : 화면 높이에 따라 유동(검은 바/잘림 방지)
+              // [🛠️ EDIT ME] 고정 높이 대신 뷰포트 기반 자동 높이
               style={{ minHeight: 520, height: "clamp(520px, calc(100vh - 220px), 900px)", overflow: "hidden" }}
             >
               {err && (
@@ -587,14 +570,14 @@ const drawLink = (l, ctx) => {
                   linkColor={() => "rgba(0,0,0,0)"}       // 기본 링크 숨김
                   linkCanvasObject={drawLink}             // 링크 커스텀 렌더
                   linkCanvasObjectMode={() => "after"}
-                  // [🛠️ EDIT ME] 움직임 느낌 조절
+                  // 움직임 느낌
                   cooldownTime={CONFIG.FORCE.cooldownTime}
                   d3VelocityDecay={CONFIG.FORCE.d3VelocityDecay}
                   d3AlphaMin={CONFIG.FORCE.d3AlphaMin}
                   backgroundColor="#ffffff"              // 배경 흰색(검은 바 방지)
                   onNodeHover={handleHover}
                   onNodeClick={handleClick}
-                  // 엔진이 안정화된 뒤 한 번 더 화면 맞춤 → 초기 타이밍 이슈 방지
+                  // 엔진 안정화 뒤 한 번 더 화면 맞춤 → 초기 타이밍 이슈 방지
                   onEngineStop={() => {
                     try {
                       graphRef.current?.zoomToFit?.(CONFIG.FORCE.autoFitMs, CONFIG.FORCE.autoFitPadding);
@@ -637,7 +620,7 @@ const drawLink = (l, ctx) => {
   );
 }
 
-/* ─────────────────────────────────────────────────────────────
+/* -----------------------------------------------------------------------------
    [🧩 고급] 새 타입 추가 가이드 (예: “시리즈”)
    1) CONFIG.NODE_COLOR     에 '시리즈' 색 추가
    2) CONFIG.LINK_STYLE.*   에 '시리즈' 키 추가(color/width/dash)
@@ -650,4 +633,4 @@ const drawLink = (l, ctx) => {
         }
    5) extractFacetList() 에서도 sets.시리즈.add(...) 추가
    끝! 나머지는 자동으로 연동됩니다.
-────────────────────────────────────────────────────────────── */
+----------------------------------------------------------------------------- */
