@@ -416,20 +416,34 @@ const handleHover = (node) => {
 };
 
   const handleClick = (node) => {
-    // 도서 노드만 상세페이지로 이동
-    if (node?.type === "book" && node.bookId) router.push(`/book/${node.bookId}`);
-  };
+// ✅ 클릭(모바일 '탭') 동작 정의
+// - 같은 노드를 700ms 이내에 다시 탭하면 상세로 이동(더블탭 개념)
+// - 첫 탭은 툴팁만 띄우고 이동하지 않음
+const handleClick = (node) => {
+  if (!node) return;
 
-  // [🛠️ EDIT ME] 줌/자동 맞춤
-  useEffect(() => {
-    if (!graphRef.current || !width || !height) return;
-    const t = setTimeout(() => {
-      try {
-        graphRef.current.zoomToFit(CONFIG.FORCE.autoFitMs, CONFIG.FORCE.autoFitPadding);
-      } catch {}
-    }, 200);
-    return () => clearTimeout(t);
-  }, [width, height, nodeCount, linkCount, tab, chip]);
+  if (node.type === "book" && node.bookId) {
+    const now = Date.now();
+
+    // 최근 700ms 내 같은 노드를 다시 탭/클릭 → 상세로 이동
+    if (lastTap.id === node.id && now - lastTap.ts < 700) {
+      setLastTap({ id: null, ts: 0 });
+      return router.push(`/book/${node.bookId}`);
+    }
+
+    // 첫 탭/클릭 → 툴팁만 띄움
+    if (graphRef.current && isNum(node.x) && isNum(node.y)) {
+      const p = graphRef.current.graph2ScreenCoords(node.x, node.y);
+      setHover({ node, x: p.x, y: p.y });
+    }
+    setLastTap({ id: node.id, ts: now });
+    return;
+  }
+
+  // 도서가 아닌 노드 → 툴팁 닫기
+  setHover(null);
+  setLastTap({ id: null, ts: 0 });
+};
 
   // [🛠️ EDIT ME] 물리 파라미터 주입(d3Force)
   useEffect(() => {
@@ -579,34 +593,33 @@ const handleHover = (node) => {
               {/* 그래프 본체 */}
               {isClient && !loading && (
                 <ForceGraph2D
-                  key={graphKey}
-                  ref={graphRef}
-                  width={width || undefined}
-                  height={height || undefined}
-                  graphData={{ nodes, links }}
-                  enableZoomPanInteraction
-                  enableNodeDrag
-                  nodeLabel={() => ""}                  // 브라우저 기본 title 툴팁 끄기
-                  nodeCanvasObject={drawNode}            // 도트+라벨 커스텀 렌더
-                  nodePointerAreaPaint={nodePointerAreaPaint}
-                  linkColor={() => "rgba(0,0,0,0)"}       // 기본 링크 숨김
-                  linkCanvasObject={drawLink}             // 링크 커스텀 렌더
-                  linkCanvasObjectMode={() => "after"}
-                  // 움직임 느낌
-                  cooldownTime={CONFIG.FORCE.cooldownTime}
-                  d3VelocityDecay={CONFIG.FORCE.d3VelocityDecay}
-                  d3AlphaMin={CONFIG.FORCE.d3AlphaMin}
-                  backgroundColor="#ffffff"              // 배경 흰색(검은 바 방지)
-                  onNodeHover={handleHover}
-                  onNodeClick={handleClick}
-                  // ⬇️ 엔진 안정화 뒤: 스피너 닫고, 보기 좋게 화면 맞춤
-                  onEngineStop={() => {
-                    setGraphReady(true);
-                    try {
-                      graphRef.current?.zoomToFit?.(CONFIG.FORCE.autoFitMs, CONFIG.FORCE.autoFitPadding);
-                    } catch {}
-                  }}
-                />
+  // ...기존 props 그대로 유지...
+  onNodeHover={handleHover}
+  onNodeClick={handleClick}
+
+  // ⬇️ 추가 (빈 배경 클릭/우클릭 시 툴팁 닫기)
+  onBackgroundClick={() => {
+    setHover(null);
+    setLastTap({ id: null, ts: 0 });
+  }}
+  onBackgroundRightClick={() => {
+    setHover(null);
+    setLastTap({ id: null, ts: 0 });
+  }}
+
+  // (선택) 노드 우클릭으로도 툴팁 닫고 싶으면 이 줄도 추가
+  onNodeRightClick={() => {
+    setHover(null);
+  }}
+
+  onEngineStop={() => {
+    setGraphReady(true);
+    try {
+      graphRef.current?.zoomToFit?.(CONFIG.FORCE.autoFitMs, CONFIG.FORCE.autoFitPadding);
+    } catch {}
+  }}
+/>
+
               )}
 
               {/* 툴팁 UI (도서 노드 전용) */}
