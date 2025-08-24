@@ -5,7 +5,7 @@
 //  2) [필터 탭/칩 표시값] → 탭 순서/표시 타입
 //  3) [툴팁 UI]           → 도서 미리보기 카드 레이아웃
 //  4) [줌/물리 시뮬레이션] → 그래프 움직임/자동 맞춤 느낌(Force 튜닝)
-//  5) [고급] 새 속성 타입 → 맨 아래 “새 타입 추가 가이드”
+//  5) [고급] 새 속성 타입 → 맨 아래 "새 타입 추가 가이드"
 // -----------------------------------------------------------------------------
 
 /* eslint-disable @next/next/no-img-element */ // <img> 경고 숨기기(원하면 제거)
@@ -32,29 +32,30 @@ const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
 });
 
 // -----------------------------------------------------------------------------
-// [🛠️ EDIT ME] 빠른 설정
+// [🛠️ EDIT ME] 빠른 설정 - 물리 시뮬레이션 개선
 // -----------------------------------------------------------------------------
 const CONFIG = {
   // 좌측 패널 sticky 기준(상단 네비 높이에 맞춰 조절)
   STICKY_TOP: 96,
 
-  // 그래프 인터랙션/시뮬레이션(움직임 느낌)
+  // 그래프 인터랙션/시뮬레이션(움직임 느낌) - 더 활발하게 조정
   FORCE: {
     // 자동 맞춤(zoomToFit) 애니메이션 시간/여백
-    autoFitMs: 600,
-    autoFitPadding: 40,
+    autoFitMs: 800,
+    autoFitPadding: 50,
 
-    // d3 물리 (전체 거동)
-    cooldownTime: 1500,    // 값↑ 오래 움직임, 값↓ 빨리 멈춤
-    d3VelocityDecay: 0.35, // 값↑ 감속 큼(차분), 값↓ 관성 큼
-    d3AlphaMin: 0.001,
+    // d3 물리 (전체 거동) - 더 오래 움직이도록 조정
+    cooldownTime: 3000,    // 값↑ 오래 움직임 (1500 → 3000)
+    d3VelocityDecay: 0.25, // 값↓ 관성 큼 (0.35 → 0.25)
+    d3AlphaMin: 0.0005,    // 더 낮게 설정하여 더 오래 시뮬레이션
 
     // 링크/반발 세부 튜닝 (useEffect에서 주입)
-    linkDistance: 52,      // 값↑ 노드 간격 넓어짐
-    chargeStrength: -240,  // 음수(반발) 절댓값↑ 더 밀어냄
+    linkDistance: 60,      // 값↑ 노드 간격 넓어짐 (52 → 60)
+    chargeStrength: -300,  // 음수(반발) 절댓값↑ 더 밀어냄 (-240 → -300)
+    linkStrength: 1.2,     // 링크 강도 증가
   },
 
-  // 노드 타입별 색상 — “book”은 도서 노드 전용 키(고정)
+  // 노드 타입별 색상 — "book"은 도서 노드 전용 키(고정)
   NODE_COLOR: {
     book: "#2563eb",
     저자: "#16a34a",
@@ -365,7 +366,7 @@ export default function BookMapPage() {
     return { nodes: keepNodes, links: normalized };
   }, [baseGraph, tab, chip]);
 
-  // 그래프 내용/필터가 바뀌면 “준비 완료” 해제 → 엔진 멈추면 다시 true
+  // 그래프 내용/필터가 바뀌면 "준비 완료" 해제 → 엔진 멈추면 다시 true
   useEffect(() => {
     setGraphReady(false);
   }, [tab, chip, nodes.length, links.length]);
@@ -375,7 +376,7 @@ export default function BookMapPage() {
 
   // 캔버스 렌더러: 노드(도트 + 라벨)
   const drawNode = (node, ctx, scale) => {
-    if (!isNum(node.x) || !isNum(node.y)) return; // 좌표 방어
+    if (!node || node.x == null || node.y == null) return; // 더 유연한 체크
     const isBook = node.type === "book";
     const r = isBook ? 7 : 6;
 
@@ -395,7 +396,7 @@ export default function BookMapPage() {
 
   // 드래그/호버 감지 범위(조금 넓게)
   const nodePointerAreaPaint = (node, color, ctx) => {
-    if (!isNum(node.x) || !isNum(node.y)) return;
+    if (!node || node.x == null || node.y == null) return; // 더 유연한 체크
     const r = node.type === "book" ? 11 : 10;
     ctx.fillStyle = color;
     ctx.beginPath();
@@ -422,14 +423,30 @@ export default function BookMapPage() {
     ctx.restore();
   };
 
-  // 호버(마우스 오버 시) → 툴팁 표시
+  // 호버(마우스 오버 시) → 툴팁 표시 - 더 관대한 체크
   const handleHover = (node) => {
-    if (!isClient || !node || !graphRef.current || !isNum(node.x) || !isNum(node.y)) {
+    if (!node) {
       setHover(null);
       return;
     }
-    const p = graphRef.current.graph2ScreenCoords(node.x, node.y);
-    setHover({ node, x: p.x, y: p.y });
+    
+    if (!isClient || !graphRef.current) {
+      setHover(null);
+      return;
+    }
+
+    // 노드 좌표가 있으면 툴팁 표시
+    if (node.x != null && node.y != null) {
+      try {
+        const p = graphRef.current.graph2ScreenCoords(node.x, node.y);
+        setHover({ node, x: p.x, y: p.y });
+      } catch (e) {
+        // graph2ScreenCoords 실패 시에도 기본 좌표로 시도
+        setHover({ node, x: node.x || 0, y: node.y || 0 });
+      }
+    } else {
+      setHover(null);
+    }
   };
 
   // 클릭/탭 → 첫 탭은 툴팁, 700ms 내 동일 노드 두 번째 탭이면 상세 이동
@@ -447,9 +464,18 @@ export default function BookMapPage() {
       }
 
       // 첫 탭 → 툴팁만 띄우기
-      if (graphRef.current && isNum(node.x) && isNum(node.y)) {
-        const p = graphRef.current.graph2ScreenCoords(node.x, node.y);
-        setHover({ node, x: p.x, y: p.y });
+      if (node.x != null && node.y != null) {
+        if (graphRef.current) {
+          try {
+            const p = graphRef.current.graph2ScreenCoords(node.x, node.y);
+            setHover({ node, x: p.x, y: p.y });
+          } catch (e) {
+            // 실패 시 기본 좌표 사용
+            setHover({ node, x: node.x || 0, y: node.y || 0 });
+          }
+        } else {
+          setHover({ node, x: node.x || 0, y: node.y || 0 });
+        }
       }
       setLastTap({ id: node.id, ts: now });
       return;
@@ -467,26 +493,33 @@ export default function BookMapPage() {
       try {
         graphRef.current.zoomToFit(CONFIG.FORCE.autoFitMs, CONFIG.FORCE.autoFitPadding);
       } catch {}
-    }, 200);
+    }, 300); // 200ms → 300ms로 약간 늘림
     return () => clearTimeout(t);
   }, [width, height, nodeCount, linkCount, tab, chip]);
 
-  // d3Force 주입(링크 길이/강도, 반발력)
+  // d3Force 주입(링크 길이/강도, 반발력) - 개선된 물리 설정
   useEffect(() => {
     if (!graphRef.current) return;
     const g = graphRef.current;
-    try {
-      const lf = g.d3Force && g.d3Force("link");
-      if (lf && typeof lf.distance === "function") {
-        lf.distance(CONFIG.FORCE.linkDistance).strength(0.9);
+    
+    // 약간의 지연을 두고 물리 엔진 설정
+    const timer = setTimeout(() => {
+      try {
+        const lf = g.d3Force && g.d3Force("link");
+        if (lf && typeof lf.distance === "function" && typeof lf.strength === "function") {
+          lf.distance(CONFIG.FORCE.linkDistance).strength(CONFIG.FORCE.linkStrength);
+        }
+        
+        const ch = g.d3Force && g.d3Force("charge");
+        if (ch && typeof ch.strength === "function") {
+          ch.strength(CONFIG.FORCE.chargeStrength);
+        }
+      } catch (e) {
+        console.log("d3Force 설정 중 오류:", e);
       }
-      const ch = g.d3Force && g.d3Force("charge");
-      if (ch && typeof ch.strength === "function") {
-        ch.strength(CONFIG.FORCE.chargeStrength);
-      }
-    } catch {
-      // d3Force 준비 전 호출 대비
-    }
+    }, 100);
+
+    return () => clearTimeout(timer);
   }, [nodeCount, linkCount]);
 
   // 강제 리마운트 키(그래프 내부 상태 초기화용)
@@ -585,6 +618,8 @@ export default function BookMapPage() {
             마우스(또는 모바일)로 줌 인/아웃 가능합니다. 도서(파란 점)와 속성 노드가 선으로 연결됩니다.
             유형(저자·역자·카테고리 등)에 따라 선의 색·굵기·점선 패턴이 다릅니다.
             (예: <span className="underline">역자·구분</span>은 점선)
+            <br />
+            <strong>💡 팁:</strong> 도서 노드를 드래그하여 이동하고, 호버/터치로 미리보기를 확인하세요!
           </p>
         </div>
 
@@ -623,8 +658,8 @@ export default function BookMapPage() {
                   width={width || undefined}
                   height={height || undefined}
                   graphData={{ nodes, links }}
-                  enableZoomPanInteraction
-                  enableNodeDrag
+                  enableZoomPanInteraction={true}
+                  enableNodeDrag={true}
                   nodeLabel={() => ""}                 // 브라우저 기본 title 툴팁 끄기
                   nodeCanvasObject={drawNode}           // 도트+라벨 렌더
                   nodePointerAreaPaint={nodePointerAreaPaint}
@@ -645,34 +680,61 @@ export default function BookMapPage() {
                   // 엔진 안정화 뒤: 스피너 닫고, 화면 맞춤
                   onEngineStop={() => {
                     setGraphReady(true);
-                    try {
-                      graphRef.current?.zoomToFit?.(CONFIG.FORCE.autoFitMs, CONFIG.FORCE.autoFitPadding);
-                    } catch {}
+                    // 약간의 지연 후 자동 맞춤
+                    setTimeout(() => {
+                      try {
+                        graphRef.current?.zoomToFit?.(CONFIG.FORCE.autoFitMs, CONFIG.FORCE.autoFitPadding);
+                      } catch {}
+                    }, 500);
                   }}
                 />
               )}
 
-              {/* 툴팁 UI (도서 노드 전용) */}
+              {/* 툴팁 UI (도서 노드 전용) - 개선된 위치 계산 */}
               {hover?.node && hover.node.type === "book" && (
                 <div
-                  className="pointer-events-none absolute z-20 w-56 rounded-xl bg-gray-900/90 p-2 text-white shadow-xl"
+                  className="pointer-events-none absolute z-20 w-56 rounded-xl bg-gray-900/95 p-3 text-white shadow-2xl backdrop-blur-sm"
                   style={{
-                    left: Math.max(8, Math.min((hover.x || 0) + 12, (width || 320) - 240)),
-                    top: Math.max(8, Math.min((hover.y || 0) - 8, (height || 200) - 140)),
+                    left: Math.max(8, Math.min((hover.x || 0) + 15, (width || 320) - 240)),
+                    top: Math.max(8, Math.min((hover.y || 0) - 10, (height || 200) - 140)),
+                    transition: "all 0.2s ease-out",
                   }}
                 >
-                  <div className="flex gap-2">
-                    <div className="h-20 w-14 overflow-hidden rounded bg-gray-700 shrink-0">
+                  <div className="flex gap-3">
+                    <div className="h-20 w-14 overflow-hidden rounded-md bg-gray-700 shrink-0 ring-1 ring-white/20">
                       {hover.node.image ? (
-                        <img src={hover.node.image} alt="" className="h-full w-full object-cover" loading="lazy" />
+                        <img 
+                          src={hover.node.image} 
+                          alt="" 
+                          className="h-full w-full object-cover" 
+                          loading="lazy"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                          }}
+                        />
                       ) : (
-                        <div className="h-full w-full bg-gray-700" />
+                        <div className="h-full w-full bg-gray-700 flex items-center justify-center">
+                          <span className="text-xs text-gray-400">📚</span>
+                        </div>
                       )}
                     </div>
-                    <div className="min-w-0">
-                      <div className="truncate font-semibold">{hover.node.label}</div>
-                      {hover.node.author && <div className="mt-0.5 truncate text-xs opacity-90">{hover.node.author}</div>}
-                      {hover.node.publisher && <div className="truncate text-[11px] opacity-70">{hover.node.publisher}</div>}
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-sm leading-tight line-clamp-2 mb-1">
+                        {hover.node.label}
+                      </div>
+                      {hover.node.author && (
+                        <div className="text-xs text-blue-200 truncate mb-0.5">
+                          👤 {hover.node.author}
+                        </div>
+                      )}
+                      {hover.node.publisher && (
+                        <div className="text-[11px] text-gray-300 truncate">
+                          🏢 {hover.node.publisher}
+                        </div>
+                      )}
+                      <div className="mt-2 text-[10px] text-gray-400">
+                        💡 더블클릭으로 상세보기
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -691,7 +753,7 @@ export async function getServerSideProps() {
 }
 
 /* -----------------------------------------------------------------------------
-   [🧩 고급] 새 타입 추가 가이드 (예: “시리즈”)
+   [🧩 고급] 새 타입 추가 가이드 (예: "시리즈")
    1) CONFIG.NODE_COLOR     에 '시리즈' 색 추가
    2) CONFIG.LINK_STYLE.*   에 '시리즈' 키 추가(color/width/dash)
    3) CONFIG.FILTER.TYPES   배열에 '시리즈' 추가(탭 노출)
