@@ -1,6 +1,17 @@
 // pages/form.js
+// ─────────────────────────────────────────────────────────────────────────────
+// ✅ 목표
+// 1) 알라딘 OpenAPI 승인 전까지 "ISBN 자동채움" 네트워크 호출을 전면 비활성화합니다.
+// 2) 버튼/메시지는 남겨서 사용자가 승인 대기 중임을 알 수 있도록 안내합니다.
+// 3) 승인 후에는 아래 플래그(ENABLE_ALADIN_AUTOFILL)를 true 로만 바꾸면 즉시 활성화됩니다.
+// 4) 기존 수동 입력/등록 흐름은 그대로 유지됩니다.
+// ─────────────────────────────────────────────────────────────────────────────
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
+
+// 🔒 승인 전까지 자동채움 완전 차단(네트워크 호출 없음)
+const ENABLE_ALADIN_AUTOFILL = false; // ← 승인 후 true 로 변경하면 즉시 활성화
 
 // 단일/멀티 선택 옵션
 const DIVISION_OPTIONS = ["국내서", "국외서", "원서", "번역서"];
@@ -188,55 +199,67 @@ export default function BookForm() {
     return () => clearInterval(t);
   }, [success, router]);
 
-// ⬇️ 기존 autofillFromIsbn 를 "이 코드로 통째로 교체"하세요.
-const autofillFromIsbn = async () => {
-  // 1) ISBN 정리: 하이픈/공백 제거 + 기본 형식 검증
-  const clean = isbn.replace(/[^0-9Xx]/g, "");
-  if (!/^(\d{10}|\d{13}|(\d{9}[0-9Xx]))$/.test(clean)) {
-    setIsbnMsg("ISBN 형식이 올바르지 않습니다.");
-    return;
-  }
+  // ───────────────────────────────────────────────────────────────────────────
+  // 📌 ISBN 자동채움(알라딘) 임시 비활성 버전
+  // - 승인 전에는 네트워크 호출을 하지 않고, 사용자 안내만 합니다.
+  // - 승인 후 ENABLE_ALADIN_AUTOFILL=true 로 바꾸면 아래 주석 블록의 실제 구현을 사용하세요.
+  // ───────────────────────────────────────────────────────────────────────────
+  const autofillFromIsbn = async () => {
+    // 1) 기본 형식 점검(사용자 오타 안내)
+    const clean = isbn.replace(/[^0-9Xx]/g, "");
+    if (!/^(\d{10}|\d{13}|(\d{9}[0-9Xx]))$/.test(clean)) {
+      setIsbnMsg("ISBN 형식이 올바르지 않습니다.");
+      return;
+    }
 
-  setIsbnLoading(true);
-  setIsbnMsg("");
+    // 2) 승인 전에는 클릭 시 안내만 표시(네트워크 호출 없음)
+    if (!ENABLE_ALADIN_AUTOFILL) {
+      setIsbnLoading(false);
+      setIsbnMsg("알라딘 OpenAPI 승인 대기 중입니다. 승인 완료 후 자동채움이 활성화됩니다.");
+      return;
+    }
 
-  // 2) 통일 스키마 데이터를 받아 "비어있는 필드만" 채우는 도우미
-  const pick = (it) => {
-    if (!it) return false;
-    if (it.title) setTitle((v)=> v || it.title);
-    if (it.author) setAuthor((v)=> v || it.author);
-    if (it.publisher) setPublisher((v)=> v || it.publisher);
-    if (it.ISBN) setIsbn(it.ISBN);
-    if (it.image) setImage((v)=> v || it.image);
-    if (it.description) setDescription((v)=> v || it.description);
-    return true;
+    // ───────────────────────────────────────────────────────────────────────
+    // 🔽 승인 후 실제 구현을 사용하려면, 아래 블록의 주석을 해제하세요.
+    // (동시에 상단 플래그 ENABLE_ALADIN_AUTOFILL 을 true 로 변경)
+    //
+    // setIsbnLoading(true);
+    // setIsbnMsg("");
+    //
+    // const pick = (it) => {
+    //   if (!it) return false;
+    //   if (it.title) setTitle((v)=> v || it.title);
+    //   if (it.author) setAuthor((v)=> v || it.author);
+    //   if (it.publisher) setPublisher((v)=> v || it.publisher);
+    //   if (it.ISBN) setIsbn(it.ISBN);
+    //   if (it.image) setImage((v)=> v || it.image);
+    //   if (it.description) setDescription((v)=> v || it.description);
+    //   if (it.link) setBuyLink((v)=> v || it.link); // 알라딘 구매 링크 자동 채움(정책 준수)
+    //   return true;
+    // };
+    //
+    // try {
+    //   const r = await fetch(`/api/aladin?isbn=${encodeURIComponent(clean)}`);
+    //   const j = await r.json();
+    //   if (j?.error) {
+    //     if (j.error.errCode === 4) {
+    //       setIsbnMsg("알라딘 OpenAPI 승인 대기 상태입니다. 승인 후 자동채움이 활성화됩니다.");
+    //     } else {
+    //       setIsbnMsg(`알라딘 응답 오류(${j.error.errCode}): ${j.error.errMsg || "잠시 후 다시 시도해 주세요."}`);
+    //     }
+    //     return;
+    //   }
+    //   if (Array.isArray(j.items) && j.items.length > 0 && pick(j.items[0])) {
+    //     setIsbnMsg("알라딘 OpenAPI에서 자동 채움 완료");
+    //   } else {
+    //     setIsbnMsg("해당 ISBN으로 도서를 찾지 못했습니다.");
+    //   }
+    // } catch (e) {
+    //   setIsbnMsg("ISBN 자동 채움 중 오류가 발생했습니다.");
+    // } finally {
+    //   setIsbnLoading(false);
+    // }
   };
-
-  try {
-// ✅ form.js 안의 autofillFromIsbn()에서 try { ... } 내부 fetch 이후 처리 부분만 이 줄들로 보강
-const r = await fetch(`/api/aladin?isbn=${encodeURIComponent(clean)}`);
-const j = await r.json();
-
-// 🔎 에러가 내려오면(예: errCode:4) 사용자에게 명확히 안내
-if (j?.error) {
-  if (j.error.errCode === 4) {
-    setIsbnMsg("알라딘 OpenAPI 승인 대기 상태입니다. 승인 후 자동채움이 활성화됩니다.");
-  } else {
-    setIsbnMsg(`알라딘 응답 오류(${j.error.errCode}): ${j.error.errMsg || "잠시 후 다시 시도해 주세요."}`);
-  }
-  setIsbnLoading(false);
-  return;
-}
-
-// 기존 성공 처리
-if (Array.isArray(j.items) && j.items.length > 0 && pick(j.items[0])) {
-  setIsbnMsg("알라딘 OpenAPI에서 자동 채움 완료");
-} else {
-  setIsbnMsg("해당 ISBN으로 도서를 찾지 못했습니다.");
-}
-
-};
-
 
   // 제출
   const handleSubmit = async (e) => {
@@ -325,12 +348,21 @@ if (Array.isArray(j.items) && j.items.length > 0 && pick(j.items[0])) {
                 <button
                   type="button"
                   onClick={autofillFromIsbn}
-                  disabled={isbnLoading || !isbn.trim()}
-                  className={`rounded-lg px-3 py-2 text-white ${isbnLoading ? "bg-blue-300" : "bg-blue-600 hover:bg-blue-700"}`}
+                  disabled={isbnLoading || !isbn.trim() || !ENABLE_ALADIN_AUTOFILL}
+                  title={ENABLE_ALADIN_AUTOFILL ? "ISBN으로 자동 채움" : "알라딘 OpenAPI 승인 대기 중입니다."}
+                  className={`rounded-lg px-3 py-2 text-white ${
+                    (isbnLoading || !isbn.trim() || !ENABLE_ALADIN_AUTOFILL)
+                      ? "bg-blue-300 cursor-not-allowed"
+                      : "bg-blue-600 hover:bg-blue-700"
+                  }`}
                 >
-                  {isbnLoading ? "조회중..." : "자동 채움"}
+                  {ENABLE_ALADIN_AUTOFILL ? (isbnLoading ? "조회중..." : "자동 채움") : "자동 채움(승인 대기)"}
                 </button>
               </div>
+              {/* 안내 문구: 승인 전에는 고정 메시지, 그 외에는 동적 메시지 */}
+              {!ENABLE_ALADIN_AUTOFILL && (
+                <p className="text-xs text-gray-500 mt-1">알라딘 OpenAPI 승인 전이므로 자동채움은 비활성화되어 있습니다.</p>
+              )}
               {isbnMsg && <p className="text-xs text-gray-500">{isbnMsg}</p>}
             </div>
 
@@ -365,6 +397,7 @@ if (Array.isArray(j.items) && j.items.length > 0 && pick(j.items[0])) {
         </form>
 
         <p className="mt-4 text-xs text-gray-500">※ ID와 등록일(created_at)은 자동 생성되어 저장됩니다.</p>
+        <p className="mt-2 text-xs text-gray-500">도서 DB 제공 : 알라딘 인터넷서점(www.aladin.co.kr)</p>
       </div>
 
       {success && (
