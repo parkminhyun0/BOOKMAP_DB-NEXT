@@ -188,52 +188,46 @@ export default function BookForm() {
     return () => clearInterval(t);
   }, [success, router]);
 
-  // ISBN → 필드 자동 채움 (seoji 우선 → kolis 보조)
-  const autofillFromIsbn = async () => {
-    const clean = isbn.replace(/[^0-9Xx]/g, "");
-    if (!/^(\d{10}|\d{13}|(\d{9}[0-9Xx]))$/.test(clean)) {
-      setIsbnMsg("ISBN 형식이 올바르지 않습니다.");
-      return;
-    }
+ // ⬇️ 기존 autofillFromIsbn 함수만 이걸로 교체하세요.
+const autofillFromIsbn = async () => {
+  const clean = isbn.replace(/[^0-9Xx]/g, "");
+  if (!/^(\d{10}|\d{13}|(\d{9}[0-9Xx]))$/.test(clean)) {
+    setIsbnMsg("ISBN 형식이 올바르지 않습니다.");
+    return;
+  }
 
-    setIsbnLoading(true);
-    setIsbnMsg("");
+  setIsbnLoading(true);
+  setIsbnMsg("");
 
-    const pick = (it) => {
-      if (!it) return false;
-      if (it.title) setTitle((v)=> v || it.title);
-      if (it.author) setAuthor((v)=> v || it.author);
-      if (it.publisher) setPublisher((v)=> v || it.publisher);
-      if (it.ISBN) setIsbn(it.ISBN);
-      if (it.image) setImage((v)=> v || it.image);
-      if (it.description) setDescription((v)=> v || it.description);
-      return true;
-    };
-
-    try {
-      // 1) 서지(ISBN)
-      let r = await fetch(`/api/korlib?provider=seoji&q=${encodeURIComponent(clean)}&page=1&size=1`);
-      let j = await r.json();
-      if (Array.isArray(j.items) && j.items.length > 0 && pick(j.items[0])) {
-        setIsbnMsg("서지(ISBN)에서 자동 채움 완료");
-        return;
-      }
-
-      // 2) KOLIS-NET 보조
-      r = await fetch(`/api/korlib?provider=kolis&q=${encodeURIComponent(clean)}&page=1&size=1`);
-      j = await r.json();
-      if (Array.isArray(j.items) && j.items.length > 0 && pick(j.items[0])) {
-        setIsbnMsg("KOLIS-NET에서 자동 채움 완료");
-        return;
-      }
-
-      setIsbnMsg("해당 ISBN으로 서지정보를 찾지 못했습니다.");
-    } catch (e) {
-      setIsbnMsg("ISBN 자동 채움 중 오류가 발생했습니다.");
-    } finally {
-      setIsbnLoading(false);
-    }
+  // 통일 스키마의 데이터를 받아 각 필드에 비어 있는 경우만 채워넣는 도우미
+  const pick = (it) => {
+    if (!it) return false;
+    if (it.title) setTitle((v)=> v || it.title);
+    if (it.author) setAuthor((v)=> v || it.author);
+    if (it.publisher) setPublisher((v)=> v || it.publisher);
+    if (it.ISBN) setIsbn(it.ISBN);
+    if (it.image) setImage((v)=> v || it.image);
+    if (it.description) setDescription((v)=> v || it.description);
+    return true;
   };
+
+  try {
+    // ✅ 서버리스 프록시 1회 호출 (서지 → KOLIS 자동 폴백)
+    const r = await fetch(`/api/korlib?provider=auto&q=${encodeURIComponent(clean)}&page=1&size=1`);
+    const j = await r.json();
+
+    if (Array.isArray(j.items) && j.items.length > 0 && pick(j.items[0])) {
+      setIsbnMsg("ISBN 자동 채움 완료");
+    } else {
+      setIsbnMsg("해당 ISBN으로 서지정보를 찾지 못했습니다.");
+    }
+  } catch (e) {
+    console.error(e);
+    setIsbnMsg("ISBN 자동 채움 중 오류가 발생했습니다.");
+  } finally {
+    setIsbnLoading(false);
+  }
+};
 
   // 제출
   const handleSubmit = async (e) => {

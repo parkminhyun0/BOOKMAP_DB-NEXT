@@ -263,25 +263,43 @@ export default function BookMapPage() {
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
 
-  // 데이터 가져오기
-  useEffect(() => {
-    setErr("");
-    setLoading(true);
-    fetch("/api/books?source=both&prefer=remote")
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`API ${r.status}`);
-        return r.json();
-      })
-      .then((raw) => {
-        const normalized = (raw || []).map((b) => ({
-          ...b,
-          id: b?.id != null ? String(b.id) : null, // id를 문자열로 통일
-        }));
-        setBooks(normalized);
-      })
-      .catch((e) => setErr(e.message || "데이터 로드 실패"))
-      .finally(() => setLoading(false));
-  }, []);
+// 데이터 가져오기
+useEffect(() => {
+  setErr("");
+  setLoading(true);
+  fetch("/api/books?source=both&prefer=remote")
+    .then(async (r) => {
+      if (!r.ok) throw new Error(`API ${r.status}`);
+      return r.json();
+    })
+    .then((raw) => {
+      const normalized = (raw || []).map((b) => ({
+        ...b,
+        id: b?.id != null ? String(b.id) : null, // id를 문자열로 통일
+      }));
+      setBooks(normalized);
+    })
+    .catch((e) => setErr(e.message || "데이터 로드 실패"))
+    .finally(() => setLoading(false));
+}, []);
+
+// ✅ 여기! (useEffect 바깥, return 위)
+const LinkSwatch = ({ type }) => {
+  const color = CONFIG.LINK_STYLE.color[type] || "#9ca3af";
+  const width = CONFIG.LINK_STYLE.width[type] || 1.5;
+  const dash  = CONFIG.LINK_STYLE.dash[type]  || [];
+  return (
+    <svg width="52" height="14" className="shrink-0" aria-hidden="true">
+      <line
+        x1="3" y1="7" x2="49" y2="7"
+        stroke={color}
+        strokeWidth={width}
+        strokeDasharray={dash.join(",")}
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+};
 
   // 전체 그래프/칩
   const baseGraph = useMemo(() => buildGraph(books), [books]);
@@ -516,24 +534,39 @@ export default function BookMapPage() {
           </div>
         )}
 
-        {/* 범례(노드 색 가이드) */}
-        <div className="mb-4 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm">
-          <div className="flex flex-wrap items-center gap-5">
-            {[
-              ["도서", "book"], ["저자", "저자"], ["역자", "역자"], ["카테고리", "카테고리"],
-              ["주제", "주제"], ["장르", "장르"], ["단계", "단계"], ["구분", "구분"],
-            ].map(([label, key]) => (
-              <span key={label} className="inline-flex items-center gap-2">
-                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: CONFIG.NODE_COLOR[key] }} />
-                <span className="text-gray-700">{label}</span>
-              </span>
-            ))}
-          </div>
-          <p className="mt-2 text-xs text-gray-500">
-            도서(파란 점)와 속성 노드가 선으로 연결됩니다. 노드를 드래그/줌할 수 있으며,
-            도서를 클릭하면 상세 페이지로 이동합니다.
-          </p>
-        </div>
+        {/* 간단 범례(노드 색 + 링크 스타일) */}
+<div className="mb-4 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm">
+  {/* 노드(점) 범례 */}
+  <div className="flex flex-wrap items-center gap-5">
+    {[
+      ["도서", "book"], ["저자", "저자"], ["역자", "역자"], ["카테고리", "카테고리"],
+      ["주제", "주제"], ["장르", "장르"], ["단계", "단계"], ["구분", "구분"],
+    ].map(([label, key]) => (
+      <span key={label} className="inline-flex items-center gap-2">
+        <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: CONFIG.NODE_COLOR[key] }} />
+        <span className="text-gray-700">{label}</span>
+      </span>
+    ))}
+  </div>
+
+  {/* ⬇️ 링크(선) 범례 추가 */}
+  <hr className="my-3 border-gray-200" />
+  <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+    {CONFIG.FILTER.TYPES.map((t) => (
+      <span key={t} className="inline-flex items-center gap-2">
+        <LinkSwatch type={t} />
+        <span className="text-gray-700">{t}</span>
+      </span>
+    ))}
+  </div>
+
+  <p className="mt-2 text-xs text-gray-500">
+    도서(파란 점)와 속성 노드가 선으로 연결됩니다. 위 선 범례는
+    <code className="mx-1 rounded bg-gray-100 px-1">CONFIG.LINK_STYLE</code>
+    로 색/굵기/점선을 변경할 수 있습니다(예: 역자·구분은 점선).
+  </p>
+</div>
+
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-7">
           {/* 좌측 패널(공지/NEW BOOK/이벤트) → 내부에서 높이 자동 조절 */}
