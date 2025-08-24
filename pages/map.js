@@ -149,6 +149,15 @@ function useSize(ref) {
   return sz;
 }
 
+// ✅ react-force-graph는 한 번 렌더되면 link.source/target을 '문자열 id' → '노드 객체'로 바꿉니다.
+//    이 함수는 어떤 형태가 들어와도 "항상 문자열 id"로 돌려줍니다.
+function getLinkEnds(link) {
+  const s = typeof link.source === "object" && link.source ? link.source.id : link.source;
+  const t = typeof link.target === "object" && link.target ? link.target.id : link.target;
+  return [String(s), String(t)];
+}
+
+
 /* ─────────────────────────────────────────────────────────────
    그래프 데이터 모델: 이분 그래프(Book ↔ 속성 노드)
 ────────────────────────────────────────────────────────────── */
@@ -291,29 +300,78 @@ export default function BookMapPage() {
   const baseGraph = useMemo(() => buildGraph(books), [books]);
   const facetChips = useMemo(() => extractFacetList(books), [books]);
 
-  // 탭/칩으로 필터링된 그래프
-  const { nodes, links } = useMemo(() => {
-    if (tab === "전체") return baseGraph;
+// ─────────────────────────────────────────────────────────────
+// 필터 적용 그래프
+// - 핵심 포인트: react-force-graph가 link.source/target을 '객체'로 바꾸더라도
+//   항상 문자열 id로 비교/생성하도록 'getLinkEnds'를 사용합니다.
+// - 또한 link들을 다시 { source: "id", target: "id", ... } 형태로 '정규화'해서
+//   그래프 데이터로 넘깁니다(안정성↑).
+// ─────────────────────────────────────────────────────────────
+const { nodes, links } = useMemo(() => {
+  // 0) 기본(전체) 그대로
+  if (tab === "전체") {
+    // ⚠️ 기본 그래프도 한 번 정규화해서 넘겨주면 이후 뮤테이션에 덜 민감해집니다.
+    const normalized = baseGraph.links.map((l) => {
+      const [s, t] = getLinkEnds(l);
+      return { ...l, source: s, target: t };
+    });
+    return { nodes: baseGraph.nodes, links: normalized };
+  }
 
-    if (!chip) {
-      // 탭만 선택 → 해당 타입 간선만 유지하고, 그 간선에 연결된 노드만 남김
-      const keepLinks = baseGraph.links.filter((l) => l.type === tab);
-      const used = new Set();
-      keepLinks.forEach((l) => { used.add(l.source); used.add(l.target); });
-      const keepNodes = baseGraph.nodes.filter((n) => used.has(n.id));
-      return { nodes: keepNodes, links: keepLinks };
-    }
+  // 1) 탭만 선택된 경우 → 해당 타입 간선만 유지
+  if (!chip) {
+    const keepLinks = baseGraph.links.filter((l) => l.type === tab);
 
-    // 칩까지 선택 → 특정 값 노드(attrId)와 그와 연결된 도서만 표시
-    const attrId = `${tab}:${chip}`;
-    const keepLinks = baseGraph.links.filter(
-      (l) => l.type === tab && (l.source === attrId || l.target === attrId)
-    );
-    const used = new Set([attrId]);
-    keepLinks.forEach((l) => { used.add(l.source); used.add(l.target); });
+    // 링크에서 사용된 '문자열 id'만 모읍니다.
+    const used = new Set();
+    keepLinks.forEach((l) => {
+      const [s, t] = getLinkEnds(l);
+      used.add(s);
+      used.add(t);
+    });
+
+    // '사용된 id'에 해당하는 노드만 남깁니다.
     const keepNodes = baseGraph.nodes.filter((n) => used.has(n.id));
-    return { nodes: keepNodes, links: keepLinks };
-  }, [baseGraph, tab, chip]);
+
+    // 링크는 항상 '문자열 id'로 정규화해서 넘깁니다.
+    const normalized = keepLinks.map((l) => {
+      const [s, t] = getLinkEnds(l);
+      return { ...l, source: s, target: t };
+    });
+
+    return { nodes: keepNodes, links: normalized };
+  }
+
+  // 2) 칩까지 선택된 경우 → 특정 값 노드(attrId)와 그와 연결된 도서만 표시
+  const attrId = `${tab}:${chip}`;
+
+  // (a) 해당 타입 링크 중에서, 끝점 중 하나가 attrId인 것만 남김
+  const keepLinks = baseGraph.links.filter((l) => {
+    if (l.type !== tab) return false;
+    const [s, t] = getLinkEnds(l);
+    return s === attrId || t === attrId;
+  });
+
+  // (b) attrId와, 선택된 링크에 실제로 등장하는 모든 끝점 id를 수집
+  const used = new Set([attrId]);
+  keepLinks.forEach((l) => {
+    const [s, t] = getLinkEnds(l);
+    used.add(s);
+    used.add(t);
+  });
+
+  // (c) 사용된 id에 해당하는 노드만 유지
+  const keepNodes = baseGraph.nodes.filter((n) => used.has(n.id));
+
+  // (d) 링크는 '문자열 id'로 정규화해서 넘김
+  const normalized = keepLinks.map((l) => {
+    const [s, t] = getLinkEnds(l);
+    return { ...l, source: s, target: t };
+  });
+
+  return { nodes: keepNodes, links: normalized };
+}, [baseGraph, tab, chip]);
+
 
   const nodeCount = nodes.length;
   const linkCount = links.length;
@@ -360,25 +418,7 @@ export default function BookMapPage() {
      - 색/굵기/점선 바꾸기 → CONFIG.LINK_STYLE
      - ✅ 끝점 좌표가 안전할 때만 그림
   ─────────────────────────────────────────────────────────── */
-  const drawLink = (l, ctx) => {
-    const s = l.source;
-    const t = l.target;
-    if (!s || !t || !isNum(s.x) || !isNum(s.y) || !isNum(t.x) || !isNum(t.y)) return; // 🔒 방어
-
-    const c = CONFIG.LINK_STYLE.color[l.type] || "#9ca3af";
-    const w = CONFIG.LINK_STYLE.width[l.type] || 1.5;
-    const d = CONFIG.LINK_STYLE.dash[l.type] || [];
-
-    ctx.save();
-    ctx.strokeStyle = c;
-    ctx.lineWidth = w;
-    if (d.length) ctx.setLineDash(d);
-    ctx.beginPath();
-    ctx.moveTo(s.x, s.y);
-    ctx.lineTo(t.x, t.y);
-    ctx.stroke();
-    ctx.restore();
-  };
+const drawLink = (l, ctx) => {
 
   /* ─────────────────────────────────────────────────────────
      호버/클릭
