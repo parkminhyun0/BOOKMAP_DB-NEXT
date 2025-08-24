@@ -593,6 +593,13 @@ export default function BookMapPage() {
   );
 }
 
+// ⬇️ 빌드 타임 프리렌더 방지: /map은 요청 시 SSR로 렌더
+export async function getServerSideProps() {
+  return { props: {} };
+}
+
+
+
 /* -----------------------------------------------------------------------------
    [🧩 고급] 새 타입 추가 가이드 (예: “시리즈”)
    1) CONFIG.NODE_COLOR     에 '시리즈' 색 추가

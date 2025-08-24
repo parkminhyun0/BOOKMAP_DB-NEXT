@@ -213,21 +213,28 @@ const autofillFromIsbn = async () => {
   };
 
   try {
-    // 3) 서버리스 프록시 호출 (알라딘 상품조회: ISBN 기반)
-    const r = await fetch(`/api/aladin?isbn=${encodeURIComponent(clean)}`);
-    const j = await r.json();
+// ✅ form.js 안의 autofillFromIsbn()에서 try { ... } 내부 fetch 이후 처리 부분만 이 줄들로 보강
+const r = await fetch(`/api/aladin?isbn=${encodeURIComponent(clean)}`);
+const j = await r.json();
 
-    if (Array.isArray(j.items) && j.items.length > 0 && pick(j.items[0])) {
-      setIsbnMsg("알라딘 OpenAPI에서 자동 채움 완료");
-    } else {
-      setIsbnMsg("해당 ISBN으로 도서를 찾지 못했습니다.");
-    }
-  } catch (e) {
-    console.error(e);
-    setIsbnMsg("ISBN 자동 채움 중 오류가 발생했습니다.");
-  } finally {
-    setIsbnLoading(false);
+// 🔎 에러가 내려오면(예: errCode:4) 사용자에게 명확히 안내
+if (j?.error) {
+  if (j.error.errCode === 4) {
+    setIsbnMsg("알라딘 OpenAPI 승인 대기 상태입니다. 승인 후 자동채움이 활성화됩니다.");
+  } else {
+    setIsbnMsg(`알라딘 응답 오류(${j.error.errCode}): ${j.error.errMsg || "잠시 후 다시 시도해 주세요."}`);
   }
+  setIsbnLoading(false);
+  return;
+}
+
+// 기존 성공 처리
+if (Array.isArray(j.items) && j.items.length > 0 && pick(j.items[0])) {
+  setIsbnMsg("알라딘 OpenAPI에서 자동 채움 완료");
+} else {
+  setIsbnMsg("해당 ISBN으로 도서를 찾지 못했습니다.");
+}
+
 };
 
 
