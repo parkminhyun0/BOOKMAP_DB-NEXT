@@ -149,13 +149,13 @@ function useSize(ref) {
   return sz;
 }
 
-// ✅ react-force-graph는 한 번 렌더되면 link.source/target을 '문자열 id' → '노드 객체'로 바꿉니다.
-//    이 함수는 어떤 형태가 들어와도 "항상 문자열 id"로 돌려줍니다.
+// 링크의 양 끝을 "문자열 id"로 반환(객체/문자열 모두 대응)
 function getLinkEnds(link) {
   const s = typeof link.source === "object" && link.source ? link.source.id : link.source;
   const t = typeof link.target === "object" && link.target ? link.target.id : link.target;
   return [String(s), String(t)];
 }
+
 
 
 /* ─────────────────────────────────────────────────────────────
@@ -302,15 +302,9 @@ export default function BookMapPage() {
 
 // ─────────────────────────────────────────────────────────────
 // 필터 적용 그래프
-// - 핵심 포인트: react-force-graph가 link.source/target을 '객체'로 바꾸더라도
-//   항상 문자열 id로 비교/생성하도록 'getLinkEnds'를 사용합니다.
-// - 또한 link들을 다시 { source: "id", target: "id", ... } 형태로 '정규화'해서
-//   그래프 데이터로 넘깁니다(안정성↑).
-// ─────────────────────────────────────────────────────────────
 const { nodes, links } = useMemo(() => {
-  // 0) 기본(전체) 그대로
+  // 전체 보기: 링크를 먼저 "문자열 id"로 정규화
   if (tab === "전체") {
-    // ⚠️ 기본 그래프도 한 번 정규화해서 넘겨주면 이후 뮤테이션에 덜 민감해집니다.
     const normalized = baseGraph.links.map((l) => {
       const [s, t] = getLinkEnds(l);
       return { ...l, source: s, target: t };
@@ -318,11 +312,11 @@ const { nodes, links } = useMemo(() => {
     return { nodes: baseGraph.nodes, links: normalized };
   }
 
-  // 1) 탭만 선택된 경우 → 해당 타입 간선만 유지
+  // 탭만 선택된 경우: 해당 타입 링크만 유지
   if (!chip) {
     const keepLinks = baseGraph.links.filter((l) => l.type === tab);
 
-    // 링크에서 사용된 '문자열 id'만 모읍니다.
+    // 링크에서 쓰인 끝점 id 수집(문자열)
     const used = new Set();
     keepLinks.forEach((l) => {
       const [s, t] = getLinkEnds(l);
@@ -330,10 +324,10 @@ const { nodes, links } = useMemo(() => {
       used.add(t);
     });
 
-    // '사용된 id'에 해당하는 노드만 남깁니다.
+    // 사용된 id에 해당하는 노드만 남김
     const keepNodes = baseGraph.nodes.filter((n) => used.has(n.id));
 
-    // 링크는 항상 '문자열 id'로 정규화해서 넘깁니다.
+    // 링크는 문자열 id로 정규화
     const normalized = keepLinks.map((l) => {
       const [s, t] = getLinkEnds(l);
       return { ...l, source: s, target: t };
@@ -342,17 +336,15 @@ const { nodes, links } = useMemo(() => {
     return { nodes: keepNodes, links: normalized };
   }
 
-  // 2) 칩까지 선택된 경우 → 특정 값 노드(attrId)와 그와 연결된 도서만 표시
+  // 칩까지 선택된 경우: attrId와 연결된 링크/노드만
   const attrId = `${tab}:${chip}`;
 
-  // (a) 해당 타입 링크 중에서, 끝점 중 하나가 attrId인 것만 남김
   const keepLinks = baseGraph.links.filter((l) => {
     if (l.type !== tab) return false;
     const [s, t] = getLinkEnds(l);
     return s === attrId || t === attrId;
   });
 
-  // (b) attrId와, 선택된 링크에 실제로 등장하는 모든 끝점 id를 수집
   const used = new Set([attrId]);
   keepLinks.forEach((l) => {
     const [s, t] = getLinkEnds(l);
@@ -360,10 +352,8 @@ const { nodes, links } = useMemo(() => {
     used.add(t);
   });
 
-  // (c) 사용된 id에 해당하는 노드만 유지
   const keepNodes = baseGraph.nodes.filter((n) => used.has(n.id));
 
-  // (d) 링크는 '문자열 id'로 정규화해서 넘김
   const normalized = keepLinks.map((l) => {
     const [s, t] = getLinkEnds(l);
     return { ...l, source: s, target: t };
@@ -373,9 +363,10 @@ const { nodes, links } = useMemo(() => {
 }, [baseGraph, tab, chip]);
 
 
+
   const nodeCount = nodes.length;
   const linkCount = links.length;
-
+  ─────────────────────────────────────────────────────────── */
   /* ─────────────────────────────────────────────────────────
      캔버스 렌더러: 노드(도트 + 라벨)
      - 색 바꾸기 → CONFIG.NODE_COLOR
