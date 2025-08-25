@@ -1,11 +1,16 @@
 // pages/map.js
 // -----------------------------------------------------------------------------
-// ✅ 이 파일에서 자주 고칠 곳만 기억하세요 (검색: [🛠️ EDIT ME])
-//  1) [빠른 설정]         → 색, 점선, 굵기, sticky 위치, 그래프 높이/물리감
-//  2) [필터 탭/칩 표시값] → 탭 순서/표시 타입
-//  3) [툴팁 UI]           → 도서 미리보기 카드 레이아웃
-//  4) [줌/물리 시뮬레이션] → 그래프 움직임/자동 맞춤 느낌(Force 튜닝)
-//  5) [고급] 새 속성 타입 → 맨 아래 "새 타입 추가 가이드"
+// ✅ 한 번에 붙여넣기용 완성본 (주석 자세히 포함)
+// - 기능 요약:
+//   1) 노드 그래프(react-force-graph-2d) + 필터(탭/칩) + 범례(노드/링크)
+//   2) 도서 노드 호버/터치 시 썸네일 툴팁 표시, 더블탭(700ms 이내) 시 상세페이지 이동
+//   3) 뷰포트/데이터 변경 시 자동 맞춤(zoomToFit) + 물리 파라미터 안전 주입
+//   4) 로딩 스피너(데이터 로딩 + 엔진 안정화 대기) 오버레이
+//   5) GA4 이벤트 연동(탭 변경, 칩 변경, 도서 상세 보기) — lib/gtag의 event 사용
+// - 자주 고치는 곳: 검색 [🛠️ EDIT ME]
+//   • CONFIG 색/두께/점선/물리감/고정높이
+//   • 범례/설명 텍스트
+//   • GA 이벤트명/파라미터
 // -----------------------------------------------------------------------------
 
 /* eslint-disable @next/next/no-img-element */ // <img> 경고 숨기기(원하면 제거)
@@ -13,14 +18,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/router";
+import { event as gaEvent } from "@/lib/gtag";     // ⬅️ GA4 이벤트 유틸 (pages/_app.js 설정 필요)
 
-import LeftPanel from "@/components/LeftPanel"; // 좌측 패널(공지/NEW BOOK/이벤트)
-/* ⬇️ [추가] 로딩 스피너 */
+import LeftPanel from "@/components/LeftPanel";
 import Loader from "@/components/Loader";
 
 // -----------------------------------------------------------------------------
-// react-force-graph-2d 를 CSR(브라우저에서만) 로드
-// - Next.js SSR 단계(window 없음)에서 에러 방지: ssr:false
+// ForceGraph2D 를 CSR 로드 (SSR 단계에서 window 없음 → 오류 방지)
 // -----------------------------------------------------------------------------
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
   ssr: false,
@@ -32,27 +36,27 @@ const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
 });
 
 // -----------------------------------------------------------------------------
-// [🛠️ EDIT ME] 빠른 설정 - 물리 시뮬레이션 개선
+// [🛠️ EDIT ME] 빠른 설정 - 그래프 스타일/물리 파라미터/필터 순서
 // -----------------------------------------------------------------------------
 const CONFIG = {
   // 좌측 패널 sticky 기준(상단 네비 높이에 맞춰 조절)
   STICKY_TOP: 96,
 
-  // 그래프 인터랙션/시뮬레이션(움직임 느낌) - 더 활발하게 조정
+  // 그래프 인터랙션/시뮬레이션(움직임 느낌)
   FORCE: {
     // 자동 맞춤(zoomToFit) 애니메이션 시간/여백
     autoFitMs: 800,
     autoFitPadding: 50,
 
-    // d3 물리 (전체 거동) - 더 오래 움직이도록 조정
-    cooldownTime: 3000,    // 값↑ 오래 움직임 (1500 → 3000)
-    d3VelocityDecay: 0.25, // 값↓ 관성 큼 (0.35 → 0.25)
-    d3AlphaMin: 0.0005,    // 더 낮게 설정하여 더 오래 시뮬레이션
+    // d3 물리 (전체 거동)
+    cooldownTime: 3000,    // 값↑ 오래 움직임 (기본 1500 → 3000)
+    d3VelocityDecay: 0.25, // 값↓ 관성 큼 (기본 0.35 → 0.25)
+    d3AlphaMin: 0.0005,    // 더 오래 수렴
 
-    // 링크/반발 세부 튜닝 (useEffect에서 주입)
-    linkDistance: 60,      // 값↑ 노드 간격 넓어짐 (52 → 60)
+    // 링크/반발 세부 튜닝 (아래 useEffect에서 주입)
+    linkDistance: 60,      // 값↑ 노드 간격 넓어짐 (기본 52 → 60)
     chargeStrength: -300,  // 음수(반발) 절댓값↑ 더 밀어냄 (-240 → -300)
-    linkStrength: 1.2,     // 링크 강도 증가
+    linkStrength: 1.2,     // 링크 강도
   },
 
   // 노드 타입별 색상 — "book"은 도서 노드 전용 키(고정)
@@ -98,15 +102,14 @@ const CONFIG = {
     },
   },
 
-  // [🛠️ EDIT ME] 필터 탭 노출 순서
+  // 탭 노출 순서 (필터 타입)
   FILTER: { TYPES: ["카테고리", "단계", "저자", "역자", "주제", "장르", "구분"] },
 };
 
 // -----------------------------------------------------------------------------
-// 유틸 함수/훅(문자 정리 / 배열 스플릿 / 컨테이너 실측 등)
+// 유틸 함수/훅
 // -----------------------------------------------------------------------------
 const norm = (v) => String(v ?? "").trim();
-const isNum = (v) => Number.isFinite(v);
 
 function splitList(input) {
   if (!input) return [];
@@ -244,8 +247,10 @@ function extractFacetList(books) {
   return Object.fromEntries(Object.entries(sets).map(([k, v]) => [k, sort(v)]));
 }
 
-/* ⬇️ 링크(선) 범례 샘플 컴포넌트
-   - [🛠️ EDIT ME] 선 스타일은 CONFIG.LINK_STYLE 에서 통일 관리 */
+/* ─────────────────────────────────────────────────────────────
+   링크(선) 범례 샘플 컴포넌트
+   - [🛠️ EDIT ME] 선 스타일은 CONFIG.LINK_STYLE 에서 통일 관리
+────────────────────────────────────────────────────────────── */
 function LinkSwatch({ type }) {
   const color = CONFIG.LINK_STYLE.color[type] || "#9ca3af";
   const width = CONFIG.LINK_STYLE.width[type] || 1.5;
@@ -284,9 +289,9 @@ export default function BookMapPage() {
   const graphRef = useRef(null);
 
   // 툴팁(도서 노드 hover)
-  const [hover, setHover] = useState(null); // {node, x, y}
+  const [hover, setHover] = useState(null); // { node, x, y }
 
-  // ✅ 모바일용 '두 번 탭' 판별(더블탭 시 상세 이동)
+  // 모바일 더블탭 판별 (700ms 이내 같은 노드 2회)
   const [lastTap, setLastTap] = useState({ id: null, ts: 0 });
 
   // CSR 전용 렌더 플래그
@@ -296,7 +301,7 @@ export default function BookMapPage() {
   // 그래프 물리 엔진 준비 여부(스피너 제어)
   const [graphReady, setGraphReady] = useState(false);
 
-  // 데이터 가져오기 (처음 마운트시에만)
+  // 데이터 가져오기 (처음 마운트시 1회)
   useEffect(() => {
     setErr("");
     setLoading(true);
@@ -308,7 +313,7 @@ export default function BookMapPage() {
       .then((raw) => {
         const normalized = (raw || []).map((b) => ({
           ...b,
-          id: b?.id != null ? String(b.id) : null, // id를 문자열로 통일
+          id: b?.id != null ? String(b.id) : null, // id 문자열 통일
         }));
         setBooks(normalized);
       })
@@ -366,7 +371,7 @@ export default function BookMapPage() {
     return { nodes: keepNodes, links: normalized };
   }, [baseGraph, tab, chip]);
 
-  // 그래프 내용/필터가 바뀌면 "준비 완료" 해제 → 엔진 멈추면 다시 true
+  // 그래프 내용/필터 변경 시: 엔진 안정화 전으로 표시(스피너 보이도록)
   useEffect(() => {
     setGraphReady(false);
   }, [tab, chip, nodes.length, links.length]);
@@ -374,9 +379,14 @@ export default function BookMapPage() {
   const nodeCount = nodes.length;
   const linkCount = links.length;
 
+  // ---------------------------------------------------------------------------
   // 캔버스 렌더러: 노드(도트 + 라벨)
+  //  - 색상: CONFIG.NODE_COLOR
+  //  - 반지름: r
+  // ---------------------------------------------------------------------------
   const drawNode = (node, ctx, scale) => {
-    if (!node || node.x == null || node.y == null) return; // 더 유연한 체크
+    if (!node || node.x == null || node.y == null) return;
+
     const isBook = node.type === "book";
     const r = isBook ? 7 : 6;
 
@@ -396,7 +406,7 @@ export default function BookMapPage() {
 
   // 드래그/호버 감지 범위(조금 넓게)
   const nodePointerAreaPaint = (node, color, ctx) => {
-    if (!node || node.x == null || node.y == null) return; // 더 유연한 체크
+    if (!node || node.x == null || node.y == null) return;
     const r = node.type === "book" ? 11 : 10;
     ctx.fillStyle = color;
     ctx.beginPath();
@@ -423,60 +433,67 @@ export default function BookMapPage() {
     ctx.restore();
   };
 
-  // 호버(마우스 오버 시) → 툴팁 표시 - 더 관대한 체크
+  // ---------------------------------------------------------------------------
+  // 호버(마우스 오버/포커스 유사) → 툴팁 표시
+  // ---------------------------------------------------------------------------
   const handleHover = (node) => {
-    if (!node) {
+    if (!node || !graphRef.current) {
       setHover(null);
       return;
     }
-    
-    if (!isClient || !graphRef.current) {
+    if (node.x == null || node.y == null) {
       setHover(null);
       return;
     }
-
-    // 노드 좌표가 있으면 툴팁 표시
-    if (node.x != null && node.y != null) {
-      try {
-        const p = graphRef.current.graph2ScreenCoords(node.x, node.y);
-        setHover({ node, x: p.x, y: p.y });
-      } catch (e) {
-        // graph2ScreenCoords 실패 시에도 기본 좌표로 시도
-        setHover({ node, x: node.x || 0, y: node.y || 0 });
-      }
-    } else {
-      setHover(null);
+    try {
+      const p = graphRef.current.graph2ScreenCoords(node.x, node.y);
+      setHover({ node, x: p.x, y: p.y });
+    } catch {
+      setHover({ node, x: node.x || 0, y: node.y || 0 });
     }
   };
 
+  // ---------------------------------------------------------------------------
   // 클릭/탭 → 첫 탭은 툴팁, 700ms 내 동일 노드 두 번째 탭이면 상세 이동
+  //  - GA 이벤트:
+  //    • 첫 탭 시 "book_preview_open"
+  //    • 더블탭으로 상세 이동 시 "book_detail_click"
+  // ---------------------------------------------------------------------------
   const handleClick = (node) => {
     if (!node) return;
 
     if (node.type === "book" && node.bookId) {
       const now = Date.now();
 
-      // 최근 700ms 내 같은 노드 다시 탭 → 상세 이동
+      // 2번째 탭/클릭(700ms 이내): 상세 페이지 이동
       if (lastTap.id === node.id && now - lastTap.ts < 700) {
+        // GA: 상세 보기 의도
+        gaEvent?.("book_detail_click", {
+          content_type: "book",
+          item_id: node.bookId,
+          item_name: node.label || "",
+          method: "map_node",
+        });
         setLastTap({ id: null, ts: 0 });
         router.push(`/book/${node.bookId}`);
         return;
       }
 
-      // 첫 탭 → 툴팁만 띄우기
+      // 1번째 탭/클릭: 툴팁만 띄움 + GA 프리뷰 오픈
       if (node.x != null && node.y != null) {
-        if (graphRef.current) {
-          try {
-            const p = graphRef.current.graph2ScreenCoords(node.x, node.y);
-            setHover({ node, x: p.x, y: p.y });
-          } catch (e) {
-            // 실패 시 기본 좌표 사용
-            setHover({ node, x: node.x || 0, y: node.y || 0 });
-          }
-        } else {
+        try {
+          const p = graphRef.current?.graph2ScreenCoords(node.x, node.y) || { x: node.x, y: node.y };
+          setHover({ node, x: p.x, y: p.y });
+        } catch {
           setHover({ node, x: node.x || 0, y: node.y || 0 });
         }
       }
+      gaEvent?.("book_preview_open", {
+        content_type: "book",
+        item_id: node.bookId,
+        item_name: node.label || "",
+        method: "map_node",
+      });
       setLastTap({ id: node.id, ts: now });
       return;
     }
@@ -486,53 +503,64 @@ export default function BookMapPage() {
     setLastTap({ id: null, ts: 0 });
   };
 
-  // [선택] 뷰포트/데이터 변경 시 자동 맞춤(엔진 멈출 때도 아래에서 한 번 더 맞춤)
+  // ---------------------------------------------------------------------------
+  // [🛠️ EDIT ME] 탭/칩 변경 헬퍼 + GA 이벤트
+  //  - 버튼 onClick 인라인을 함수로 분리하여 GA 이벤트를 함께 전송
+  // ---------------------------------------------------------------------------
+  function handleTabChange(nextTab) {
+    setTab(nextTab);
+    setChip(null);
+    gaEvent?.("map_tab_change", { tab: nextTab }); // GA: 탭 변경
+  }
+
+  function handleChipChange(nextChip) {
+    const newValue = nextChip === chip ? null : nextChip; // 토글
+    setChip(newValue);
+    gaEvent?.("map_chip_change", { tab, chip: newValue || "(전체)" }); // GA: 칩 변경
+  }
+
+  // ---------------------------------------------------------------------------
+  // [선택] 뷰포트/데이터 변경 시 자동 맞춤 (엔진 멈출 때도 한 번 더 맞춤)
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!graphRef.current || !width || !height) return;
     const t = setTimeout(() => {
       try {
         graphRef.current.zoomToFit(CONFIG.FORCE.autoFitMs, CONFIG.FORCE.autoFitPadding);
       } catch {}
-    }, 300); // 200ms → 300ms로 약간 늘림
+    }, 300);
     return () => clearTimeout(t);
   }, [width, height, nodeCount, linkCount, tab, chip]);
 
-  // d3Force 주입(링크 길이/강도, 반발력) - 개선된 물리 설정
+  // d3Force 주입(링크 길이/강도, 반발력)
   useEffect(() => {
     if (!graphRef.current) return;
     const g = graphRef.current;
-    
-    // 약간의 지연을 두고 물리 엔진 설정
     const timer = setTimeout(() => {
       try {
         const lf = g.d3Force && g.d3Force("link");
         if (lf && typeof lf.distance === "function" && typeof lf.strength === "function") {
           lf.distance(CONFIG.FORCE.linkDistance).strength(CONFIG.FORCE.linkStrength);
         }
-        
         const ch = g.d3Force && g.d3Force("charge");
         if (ch && typeof ch.strength === "function") {
           ch.strength(CONFIG.FORCE.chargeStrength);
         }
-      } catch (e) {
-        console.log("d3Force 설정 중 오류:", e);
-      }
+      } catch {}
     }, 100);
-
     return () => clearTimeout(timer);
   }, [nodeCount, linkCount]);
 
   // 강제 리마운트 키(그래프 내부 상태 초기화용)
   const graphKey = `${tab}|${chip ?? "ALL"}|${nodeCount}|${linkCount}`;
 
-  /* ⬇️ 스피너 표시 여부
-     - loading: API 응답 대기
-     - !isClient: SSR 단계 보호
-     - !graphReady: 엔진이 멈춰 레이아웃이 안정되기 전 */
+  // 스피너 표시 여부 (데이터 로딩 or CSR 아님 or 엔진 미안정)
   const showSpinner =
     loading || !isClient || (!graphReady && (nodes.length > 0 || links.length > 0));
 
+  // ---------------------------------------------------------------------------
   // 렌더
+  // ---------------------------------------------------------------------------
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
@@ -547,7 +575,7 @@ export default function BookMapPage() {
           {["전체", ...CONFIG.FILTER.TYPES].map((t) => (
             <button
               key={t}
-              onClick={() => { setTab(t); setChip(null); }}
+              onClick={() => handleTabChange(t)}
               className={`rounded-full border px-3 py-1.5 text-sm transition ${
                 tab === t ? "bg-gray-900 text-white border-gray-900"
                           : "text-gray-700 border-gray-300 hover:bg-gray-100"
@@ -562,7 +590,7 @@ export default function BookMapPage() {
         {CONFIG.FILTER.TYPES.includes(tab) && (
           <div className="mb-3 flex flex-wrap gap-2">
             <button
-              onClick={() => setChip(null)}
+              onClick={() => handleChipChange(null)}
               className={`rounded-full border px-3 py-1.5 text-sm transition ${
                 chip == null ? "bg-blue-600 text-white border-blue-600"
                              : "text-gray-700 border-gray-300 hover:bg-gray-100"
@@ -573,7 +601,7 @@ export default function BookMapPage() {
             {(facetChips[tab] || []).map((v) => (
               <button
                 key={v}
-                onClick={() => setChip(v === chip ? null : v)}
+                onClick={() => handleChipChange(v)}
                 className={`rounded-full border px-3 py-1.5 text-sm transition ${
                   chip === v ? "bg-blue-600 text-white border-blue-600"
                              : "text-gray-700 border-gray-300 hover:bg-gray-100"
@@ -586,7 +614,7 @@ export default function BookMapPage() {
           </div>
         )}
 
-        {/* 간단 범례(노드 색 + 링크 스타일) */}
+        {/* 범례(노드 색 + 링크 스타일) */}
         <div className="mb-4 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm">
           {/* 노드(점) 범례 */}
           <div className="flex flex-wrap items-center gap-5">
@@ -606,20 +634,19 @@ export default function BookMapPage() {
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             {CONFIG.FILTER.TYPES.map((t) => (
               <span key={t} className="inline-flex items-center gap-2">
-                {/* ⬇️ 작은 샘플 선(색/굵기/점선은 CONFIG.LINK_STYLE 따라감) */}
-                <LinkSwatch type={t} />
+                <LinkSwatch type={t} /> {/* 작은 선 샘플 */}
                 <span className="text-gray-700">{t}</span>
               </span>
             ))}
           </div>
 
-          {/* 사람 친화적인 설명문(개발자 상수명 노출 제거) */}
+          {/* 사용자 안내문 */}
           <p className="mt-2 text-xs text-gray-500">
             마우스(또는 모바일)로 줌 인/아웃 가능합니다. 도서(파란 점)와 속성 노드가 선으로 연결됩니다.
             유형(저자·역자·카테고리 등)에 따라 선의 색·굵기·점선 패턴이 다릅니다.
             (예: <span className="underline">역자·구분</span>은 점선)
             <br />
-            <strong>💡 팁:</strong> 도서 노드를 드래그하여 이동하고, 호버/터치로 미리보기를 확인하세요!
+            <strong>팁:</strong> 도서 노드를 드래그하여 이동하고, 호버/터치로 미리보기를 확인하세요.
           </p>
         </div>
 
@@ -661,10 +688,10 @@ export default function BookMapPage() {
                   enableZoomPanInteraction={true}
                   enableNodeDrag={true}
                   nodeLabel={() => ""}                 // 브라우저 기본 title 툴팁 끄기
-                  nodeCanvasObject={drawNode}           // 도트+라벨 렌더
+                  nodeCanvasObject={drawNode}           // 노드(도트+라벨)
                   nodePointerAreaPaint={nodePointerAreaPaint}
                   linkColor={() => "rgba(0,0,0,0)"}      // 기본 링크 숨김
-                  linkCanvasObject={drawLink}            // 링크 커스텀 렌더
+                  linkCanvasObject={drawLink}            // 링크(선) 커스텀 렌더
                   linkCanvasObjectMode={() => "after"}
                   cooldownTime={CONFIG.FORCE.cooldownTime}
                   d3VelocityDecay={CONFIG.FORCE.d3VelocityDecay}
@@ -675,12 +702,11 @@ export default function BookMapPage() {
                   // 빈 배경 클릭/우클릭 → 툴팁 닫기
                   onBackgroundClick={() => { setHover(null); setLastTap({ id: null, ts: 0 }); }}
                   onBackgroundRightClick={() => { setHover(null); setLastTap({ id: null, ts: 0 }); }}
-                  // (선택) 노드 우클릭으로도 툴팁 닫기
+                  // (선택) 노드 우클릭 → 툴팁 닫기
                   onNodeRightClick={() => { setHover(null); }}
-                  // 엔진 안정화 뒤: 스피너 닫고, 화면 맞춤
+                  // 엔진 안정화 뒤: 스피너 닫고, 보기 좋게 화면 맞춤(약간 지연)
                   onEngineStop={() => {
                     setGraphReady(true);
-                    // 약간의 지연 후 자동 맞춤
                     setTimeout(() => {
                       try {
                         graphRef.current?.zoomToFit?.(CONFIG.FORCE.autoFitMs, CONFIG.FORCE.autoFitPadding);
@@ -690,7 +716,7 @@ export default function BookMapPage() {
                 />
               )}
 
-              {/* 툴팁 UI (도서 노드 전용) - 개선된 위치 계산 */}
+              {/* 툴팁 UI (도서 노드 전용) */}
               {hover?.node && hover.node.type === "book" && (
                 <div
                   className="pointer-events-none absolute z-20 w-56 rounded-xl bg-gray-900/95 p-3 text-white shadow-2xl backdrop-blur-sm"
@@ -703,14 +729,12 @@ export default function BookMapPage() {
                   <div className="flex gap-3">
                     <div className="h-20 w-14 overflow-hidden rounded-md bg-gray-700 shrink-0 ring-1 ring-white/20">
                       {hover.node.image ? (
-                        <img 
-                          src={hover.node.image} 
-                          alt="" 
-                          className="h-full w-full object-cover" 
+                        <img
+                          src={hover.node.image}
+                          alt=""
+                          className="h-full w-full object-cover"
                           loading="lazy"
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                          }}
+                          onError={(e) => { e.currentTarget.style.display = "none"; }}
                         />
                       ) : (
                         <div className="h-full w-full bg-gray-700 flex items-center justify-center">
@@ -733,7 +757,7 @@ export default function BookMapPage() {
                         </div>
                       )}
                       <div className="mt-2 text-[10px] text-gray-400">
-                        💡 더블클릭으로 상세보기
+                        더블탭(또는 더블클릭)으로 상세 보기
                       </div>
                     </div>
                   </div>
@@ -747,7 +771,7 @@ export default function BookMapPage() {
   );
 }
 
-// ⬇️ 빌드 타임 프리렌더 방지: /map은 요청 시 SSR로 렌더
+// ⬇️ 빌드 타임 프리렌더 방지: /map 은 요청 시 SSR로 렌더(데이터 의존/CSR 안전)
 export async function getServerSideProps() {
   return { props: {} };
 }
